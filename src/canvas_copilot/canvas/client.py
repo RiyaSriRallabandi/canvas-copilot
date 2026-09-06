@@ -148,6 +148,16 @@ class CanvasClient:
                 course.is_favorite = True
         return courses
 
+    def get_todo(self) -> list[Assignment]:
+        """The student's Canvas to-do list: assignments still needing submission."""
+        raw = self._get_paginated("/users/self/todo")
+        todo: list[Assignment] = []
+        for item in raw:
+            assignment = item.get("assignment")
+            if assignment and "id" in assignment:
+                todo.append(Assignment.model_validate(assignment))
+        return todo
+
     def list_assignments(
         self,
         course_id: int,

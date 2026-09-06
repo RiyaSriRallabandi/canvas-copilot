@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # e.g. https://canvas.cmu.edu/api/v1
     canvas_base_url: str = ""
 
+    # Local Ollama model + host for the agent.
+    model: str = "qwen2.5:3b"
+    ollama_host: str = "http://localhost:11434"
+
 
 @lru_cache
 def get_settings() -> Settings:

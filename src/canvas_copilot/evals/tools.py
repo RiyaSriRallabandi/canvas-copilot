@@ -12,15 +12,18 @@ from langchain_core.tools import tool
 
 @tool
 def list_courses() -> str:
-    """List the student's courses, with names, codes, and nicknames."""
+    """List, show, or browse the student's courses. Use for any request to see
+    their courses or classes ("what am I taking", "my classes this semester").
+    Not for looking up one specific course."""
     return ""
 
 
 @tool
 def resolve_course(query: str) -> str:
-    """Resolve a course the student named by title, nickname, or abbreviation
-    (e.g. "Stats", "my AI class", "36-700") to a specific course. Call this
-    FIRST whenever the student refers to one particular course."""
+    """Identify ONE specific course the student named by title, nickname, or
+    abbreviation (e.g. "Stats", "my AI class", "36-700"). Call this before any
+    course-specific lookup to get the course id. The `query` argument is
+    required and must be the student's own words for the course."""
     return ""
 
 

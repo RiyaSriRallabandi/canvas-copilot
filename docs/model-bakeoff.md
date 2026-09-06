@@ -12,17 +12,27 @@ interface the M4 LangGraph agent uses.
 
 Run it: `uv run python -m canvas_copilot.evals`
 
-## Results (2026-09-06)
+## Results
+
+### Initial run (2026-09-06, minimal tool descriptions)
 
 | Metric | qwen2.5:3b | llama3.2:3b |
 |---|---|---|
-| Tool accuracy | **0.90** (9/10) | 0.50 (5/10) |
-| Refusal accuracy | **1.0** (2/2) | 0.5 (1/2) |
+| Tool accuracy | 0.90 (9/10) | 0.50 (5/10) |
+| Refusal accuracy | 1.0 (2/2) | 0.5 (1/2) |
 | Latency p50 | 2.16 s | 2.27 s |
-| Latency p95 | 9.15 s* | 4.95 s |
+
+### Re-run (M4, sharpened `list_courses` / `resolve_course` descriptions)
+
+| Metric | qwen2.5:3b | llama3.2:3b |
+|---|---|---|
+| Tool accuracy | **1.0 (12/12)** | 0.70 |
+| Refusal accuracy | **1.0** | 0.0 |
+| Latency p50 | 1.63 s | 1.90 s |
 | Download size | 1.93 GB | 2.02 GB |
 
-\* almost certainly first-call model load; re-measure with a warmup.
+Sharpening the tool descriptions closed qwen's only gap (`list-courses`) with no
+regressions. qwen2.5:3b now passes every case.
 
 ## Why qwen
 
@@ -40,13 +50,18 @@ The failure *patterns* decided it, not just the totals:
   `list_courses` vs `resolve_course` descriptions fixes it. This is a
   tool-description clarity issue, addressed in M4.
 
-## Follow-ups for M4
+## Done in M4
 
-- Draw the `list_courses` vs `resolve_course` boundary clearly in tool
-  descriptions (and re-run this eval to confirm no regressions).
-- Add argument validation + retry to the agent loop: models sometimes emit a
-  tool call with missing required args (`resolve_course({})`).
-- Re-measure latency with a warmup call.
+- Sharpened the `list_courses` vs `resolve_course` descriptions; re-ran this eval
+  (qwen 12/12, no regressions).
+- Agent loop reports bad/missing tool args back to the model so it can retry.
+
+## Still open (for M7)
+
+- This eval only checks the *first* tool choice. It does not catch the model
+  picking the right tool but omitting arguments — e.g. calling `get_todo()` with
+  no date bounds for "what's due this week", then presenting stale items. The
+  golden-set eval needs to check tool arguments and multi-turn behavior.
 
 ## Caveats
 

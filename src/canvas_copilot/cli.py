@@ -193,13 +193,62 @@ def nickname_remove(phrase: str) -> None:
 
 
 @app.command()
-def ask(question: str) -> None:
+def ask(
+    question: str,
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show the agent's tool calls."
+    ),
+) -> None:
     """Ask a natural-language question about your Canvas courses."""
-    typer.echo(f"You asked: {question!r}")
-    typer.echo(
-        "Canvas Copilot is not fully wired up yet. Structured lookups and the "
-        "agent loop arrive in later milestones."
+    from datetime import date
+
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    from canvas_copilot.agent import AgentDeps, build_agent
+    from canvas_copilot.agent.dates import hints_for
+
+    settings = get_settings()
+    _, cache, nicknames = _open_storage()
+    client = _client()
+    deps = AgentDeps(client=client, cache=cache, nicknames=nicknames)
+
+    try:
+        agent = build_agent(
+            deps,
+            model_name=settings.model,
+            ollama_host=settings.ollama_host,
+        )
+        result = agent.invoke(
+            {
+                "messages": [HumanMessage(content=question)],
+                "date_hints": hints_for(question, date.today()),
+            }
+        )
+    except CanvasError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+    messages = result["messages"]
+    if verbose:
+        for message in messages:
+            for call in getattr(message, "tool_calls", None) or []:
+                typer.echo(f"  → {call['name']}({call['args']})", err=True)
+            if isinstance(message, ToolMessage):
+                first_line = message.content.splitlines()[0] if message.content else ""
+                typer.echo(f"  ← {first_line}", err=True)
+        typer.echo("", err=True)
+
+    final = next(
+        (
+            m.content
+            for m in reversed(messages)
+            if isinstance(m, AIMessage) and m.content
+        ),
+        "(no answer)",
     )
+    typer.echo(final)
 
 
 @app.command()

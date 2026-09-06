@@ -95,6 +95,24 @@ class NicknameStore:
         ).fetchall()
         return [self._row_to_nickname(row) for row in rows]
 
+    def prune_learned(self, keep_course_ids: set[int]) -> list[str]:
+        """Delete auto-learned nicknames whose course is no longer in
+        ``keep_course_ids``. Manual nicknames are left alone. Returns the
+        display phrases removed.
+        """
+        rows = self._conn.execute(
+            "SELECT display_phrase, phrase FROM course_nicknames "
+            "WHERE source = 'learned' AND course_id NOT IN "
+            f"({','.join('?' * len(keep_course_ids)) or 'NULL'})",
+            tuple(keep_course_ids),
+        ).fetchall()
+        with self._conn:
+            self._conn.executemany(
+                "DELETE FROM course_nicknames WHERE phrase = ?",
+                [(row["phrase"],) for row in rows],
+            )
+        return [row["display_phrase"] for row in rows]
+
     @staticmethod
     def _row_to_nickname(row: sqlite3.Row) -> Nickname:
         return Nickname(

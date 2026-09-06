@@ -143,13 +143,18 @@ def _resolve_within(
 
     by_id = {c.id: c for c in courses}
 
-    # 1. stored nickname
+    # 1. stored nickname. A *learned* nickname (from a past clarification) only
+    #    counts while its course is still current — otherwise it goes stale when
+    #    the semester turns over. Manual nicknames are always honored.
     if nicknames is not None:
-        course_id = nicknames.lookup(query)
-        if course_id in by_id:
-            return Resolution(
-                "resolved", query, course=by_id[course_id], reason="nickname"
-            )
+        entry = nicknames.get(query)
+        if entry and entry.course_id in by_id:
+            course = by_id[entry.course_id]
+            stale = entry.source == "learned" and not course.is_favorite
+            if not stale:
+                return Resolution(
+                    "resolved", query, course=course, reason="nickname"
+                )
 
     # 2. exact match on a word, acronym, code, or full name
     q_alnum = _alnum(query)

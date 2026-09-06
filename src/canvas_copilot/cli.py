@@ -107,13 +107,21 @@ def courses(
 
 @app.command()
 def refresh() -> None:
-    """Re-fetch the course list from Canvas into the local cache."""
+    """Re-fetch the course list from Canvas and prune stale learned nicknames."""
+    _, cache, nicknames = _open_storage()
     try:
-        course_list = _cached_courses(force=True)
+        course_list = cache.get_courses(_fetch_courses, force=True)
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
         raise typer.Exit(1)
     typer.echo(f"Cached {len(course_list)} course(s).")
+
+    pruned = nicknames.prune_learned({c.id for c in course_list})
+    if pruned:
+        typer.echo(
+            f"Removed {len(pruned)} learned nickname(s) for courses no longer "
+            f"active: {', '.join(repr(p) for p in pruned)}"
+        )
 
 
 @app.command()
@@ -192,77 +200,76 @@ def nickname_remove(phrase: str) -> None:
     typer.echo("Removed." if nicknames.remove(phrase) else "No matching nickname.")
 
 
-@app.command()
-def ask(
-    question: str,
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show the agent's tool calls."
-    ),
-) -> None:
-    """Ask a natural-language question about your Canvas courses."""
-    import uuid
-    from datetime import date
-
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+def _build_session_agent():
+    """(agent, deps, client) sharing one in-memory checkpointer for a session."""
     from langgraph.checkpoint.memory import InMemorySaver
-    from langgraph.types import Command
 
     from canvas_copilot.agent import AgentDeps, build_agent
-    from canvas_copilot.agent.dates import hints_for
 
     settings = get_settings()
     _, cache, nicknames = _open_storage()
     client = _client()
     deps = AgentDeps(client=client, cache=cache, nicknames=nicknames)
-    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    agent = build_agent(
+        deps,
+        model_name=settings.model,
+        ollama_host=settings.ollama_host,
+        checkpointer=InMemorySaver(),
+    )
+    return agent, deps, client
 
-    def _show_tools(messages: list) -> None:
-        if not verbose:
-            return
-        for message in messages:
-            for call in getattr(message, "tool_calls", None) or []:
-                typer.echo(f"  → {call['name']}({call['args']})", err=True)
-            if isinstance(message, ToolMessage) and message.content:
-                typer.echo(f"  ← {message.content.splitlines()[0]}", err=True)
 
-    try:
-        agent = build_agent(
-            deps,
-            model_name=settings.model,
-            ollama_host=settings.ollama_host,
-            checkpointer=InMemorySaver(),
-        )
-        state = agent.invoke(
-            {
-                "messages": [HumanMessage(content=question)],
-                "date_hints": hints_for(question, date.today()),
-                "clarify": None,
-            },
-            config,
-        )
-        _show_tools(state["messages"])
+def _echo_tools(messages: list, seen: set) -> None:
+    from langchain_core.messages import ToolMessage
 
-        while state.get("__interrupt__"):
-            prompt_payload = state["__interrupt__"][0].value
-            typer.echo(prompt_payload["prompt"])
-            raw = typer.prompt("Pick a number").strip()
-            options = prompt_payload["options"]
-            try:
-                picked = options[int(raw) - 1]["id"]
-            except (ValueError, IndexError):
-                typer.echo("No selection made.")
-                picked = None
-            state = agent.invoke(Command(resume=picked), config)
-            _show_tools(state["messages"])
-    except CanvasError as exc:
-        typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
-    finally:
-        client.close()
+    for message in messages:
+        key = id(message)
+        if key in seen:
+            continue
+        seen.add(key)
+        for call in getattr(message, "tool_calls", None) or []:
+            typer.echo(f"  → {call['name']}({call['args']})", err=True)
+        if isinstance(message, ToolMessage) and message.content:
+            typer.echo(f"  ← {message.content.splitlines()[0]}", err=True)
+
+
+def _converse(agent, config, question: str, *, verbose: bool) -> str:
+    """Run one turn (with the clarification pause/resume loop) and return the answer."""
+    from datetime import date
+
+    from langchain_core.messages import AIMessage, HumanMessage
+    from langgraph.types import Command
+
+    from canvas_copilot.agent.dates import hints_for
+
+    seen: set = set()
+    state = agent.invoke(
+        {
+            "messages": [HumanMessage(content=question)],
+            "date_hints": hints_for(question, date.today()),
+            "clarify": None,
+        },
+        config,
+    )
+    if verbose:
+        _echo_tools(state["messages"], seen)
+
+    while state.get("__interrupt__"):
+        payload = state["__interrupt__"][0].value
+        typer.echo(payload["prompt"])
+        raw = typer.prompt("Pick a number").strip()
+        try:
+            picked = payload["options"][int(raw) - 1]["id"]
+        except (ValueError, IndexError):
+            typer.echo("No selection made.")
+            picked = None
+        state = agent.invoke(Command(resume=picked), config)
+        if verbose:
+            _echo_tools(state["messages"], seen)
 
     if verbose:
         typer.echo("", err=True)
-    final = next(
+    return next(
         (
             m.content
             for m in reversed(state["messages"])
@@ -270,7 +277,60 @@ def ask(
         ),
         "(no answer)",
     )
-    typer.echo(final)
+
+
+@app.command()
+def ask(
+    question: str,
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show the agent's tool calls."
+    ),
+) -> None:
+    """Ask a single question about your Canvas courses."""
+    import uuid
+
+    agent, _, client = _build_session_agent()
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    try:
+        typer.echo(_converse(agent, config, question, verbose=verbose))
+    except CanvasError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+
+@app.command()
+def chat(
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show the agent's tool calls."
+    ),
+) -> None:
+    """Start an interactive session that remembers context across questions."""
+    import uuid
+
+    agent, _, client = _build_session_agent()
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    typer.echo("Canvas Copilot — type a question, or 'exit' to quit.\n")
+    try:
+        while True:
+            try:
+                question = typer.prompt("you").strip()
+            except (typer.Abort, EOFError):
+                typer.echo()
+                break
+            if question.lower() in {"exit", "quit"}:
+                break
+            if not question:
+                continue
+            try:
+                answer = _converse(agent, config, question, verbose=verbose)
+            except CanvasError as exc:
+                typer.echo(f"Error: {exc}")
+                continue
+            typer.echo(f"\n{answer}\n")
+    finally:
+        client.close()
 
 
 @app.command()

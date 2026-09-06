@@ -119,6 +119,29 @@ def test_manual_nickname_overrides_acronym_ambiguity():
     assert result.course is not None and result.course.id == 1
 
 
+def test_stale_learned_nickname_is_ignored():
+    nicknames = NicknameStore(connect(":memory:"))
+    nicknames.learn("ai", 99)  # a course that is no longer current
+    courses = [
+        Course(id=1, name="Advanced AI Systems", course_code="17-737", is_favorite=True),
+        Course(id=99, name="Old Intro to AI", is_favorite=False),
+    ]
+    result = resolve_course("ai", courses, nicknames)
+    assert result.status == "resolved"
+    assert result.course is not None and result.course.id == 1
+
+
+def test_manual_nickname_to_past_course_still_finds_it():
+    nicknames = NicknameStore(connect(":memory:"))
+    nicknames.add("thesis", 99, source="manual")
+    courses = [
+        Course(id=1, name="Statistics", is_favorite=True),
+        Course(id=99, name="Thesis Research", is_favorite=False),
+    ]
+    result = resolve_course("thesis", courses, nicknames)
+    assert result.course is not None and result.course.id == 99
+
+
 def test_stored_nickname_wins():
     nicknames = NicknameStore(connect(":memory:"))
     nicknames.add("hci", 3)

@@ -150,6 +150,44 @@ def test_get_assignments_allowed_after_resolve_course():
     assert result["messages"][-1].content == "Nothing due."
 
 
+def test_conversation_remembers_the_resolved_course_across_turns():
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    deps, client = _deps([Course(id=7, name="Stats", nickname="Stats", is_favorite=True)])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="", id="a1",
+                tool_calls=[{"name": "resolve_course", "args": {"query": "stats"}, "id": "r1"}],
+            ),
+            AIMessage(content="No homework.", id="a2"),
+            AIMessage(
+                content="", id="a3",
+                tool_calls=[{"name": "get_assignments", "args": {"course_id": 7}, "id": "g1"}],
+            ),
+            AIMessage(content="No quizzes either.", id="a4"),
+        ]
+    )
+    agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "chat-1"}}
+
+    first = agent.invoke(
+        {"messages": [("user", "homework in stats?")], "date_hints": "", "clarify": None},
+        config,
+    )
+    assert first["messages"][-1].content == "No homework."
+
+    # Second turn names no course; get_assignments(7) must be allowed because
+    # id 7 is still in known_course_ids from the first turn.
+    second = agent.invoke(
+        {"messages": [("user", "any quizzes in it?")], "date_hints": "", "clarify": None},
+        config,
+    )
+    client.list_assignments.assert_called_once_with(7, due_after=None, due_before=None)
+    assert second["messages"][-1].content == "No quizzes either."
+    assert any(m.type == "human" and "homework" in m.content for m in second["messages"])
+
+
 def test_ambiguous_course_pauses_then_resumes_with_the_pick():
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.types import Command

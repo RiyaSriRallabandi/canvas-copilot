@@ -70,9 +70,10 @@ def _make_model(model_name: str, ollama_host: str) -> BaseChatModel:
 def _system_message(deps: AgentDeps, today: date, date_hints: str) -> SystemMessage:
     courses = deps.courses()
     current = [c for c in courses if c.is_favorite] or courses
+    # Names only, no ids — the model must call resolve_course / list_courses to
+    # get an id, rather than guessing one straight from this list.
     course_lines = "\n".join(
-        f"  - id {c.id}: {c.nickname or c.name} [{c.course_code or '?'}]"
-        for c in current
+        f"  - {c.nickname or c.name} [{c.course_code or '?'}]" for c in current
     )
     context = [
         f"\n\nToday is {today.strftime('%A, %B %d, %Y')} ({today.isoformat()}).",

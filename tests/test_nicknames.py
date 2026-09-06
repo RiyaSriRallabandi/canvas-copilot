@@ -59,3 +59,16 @@ def test_one_course_can_have_several_nicknames(store: NicknameStore):
     store.add("ai strat", 55274)
     assert store.lookup("strategy") == 55274
     assert store.lookup("ai strat") == 55274
+
+
+def test_prune_learned_drops_only_dead_learned_entries(store: NicknameStore):
+    store.add("keeper", 1, source="manual")
+    store.learn("current", 2)
+    store.learn("gone", 99)
+
+    removed = store.prune_learned({1, 2})
+
+    assert removed == ["gone"]
+    assert store.lookup("keeper") == 1  # manual kept
+    assert store.lookup("current") == 2  # course still active
+    assert store.lookup("gone") is None  # learned + course gone

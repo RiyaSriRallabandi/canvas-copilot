@@ -26,6 +26,35 @@ them. Feeds the guardrail + prompt work in M6 and the eval in M7.
 - **Prompt**: explicit "pass the student's own words", "only use an id a tool
   gave you", "don't call resolve_course for all-course questions".
 
+## M5.5
+
+- **`chat` command**: interactive session, one `thread_id` + `InMemorySaver`, so
+  message history and `known_course_ids` carry across questions — "any quizzes
+  in it?" reuses the course resolved a turn earlier. Verified live. Still
+  gated by the model reliably calling `resolve_course` in the first place.
+- **Stale learned nicknames**: a `learned` nickname only resolves while its
+  course is starred; `refresh` prunes learned nicknames whose course is no
+  longer active. Manual nicknames are untouched.
+
+## M5.5 prompt fixes
+
+- Removed course **ids** from the system-prompt course list — qwen was using
+  them to skip `resolve_course`. Without ids it must call a tool; when the
+  `known_course_ids` guardrail rejects a guessed id, it now recovers by calling
+  `resolve_course` instead of giving up.
+- Removed the literal `[Assignment name](url)` formatting example — the model
+  was emitting it verbatim when it had no real data.
+- Added "answer course naming/counting from context, but MUST use a tool for
+  assignments/dates" and "don't restate earlier answers".
+
+## Open question: is qwen2.5:3b strong enough?
+
+The bake-off (single-turn tool selection) it aced. Multi-turn `chat` exposes
+real weaknesses: it misses "AI Strategy" when asked "which are my AI classes"
+(a 6-item list), narrates its own confusion instead of retrying, and drifts /
+repeats as history grows. **M6 should re-run the bake-off with a 7–8B model
+against the real agent + a multi-turn eval before committing to 3B.**
+
 ## Still open → M6 / M7
 
 - Model still sometimes omits date args to `get_todo` — consider making the

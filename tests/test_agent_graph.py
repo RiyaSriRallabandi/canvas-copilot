@@ -34,14 +34,15 @@ class ScriptedModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=message)])
 
 
-def _deps() -> tuple[AgentDeps, MagicMock]:
+def _deps(courses: list[Course] | None = None) -> tuple[AgentDeps, MagicMock]:
     client = MagicMock()
-    client.list_courses.return_value = [
+    client.list_courses.return_value = courses or [
         Course(id=1, name="Stats", course_code="36-700", is_favorite=True)
     ]
     client.get_todo.return_value = [
         Assignment(id=7, name="Lab 3", course_id=1, html_url="http://x/7")
     ]
+    client.list_assignments.return_value = []
     cache = MagicMock()
     cache.get_courses.side_effect = lambda fetch, **kw: fetch()
     nicknames = MagicMock()
@@ -99,3 +100,89 @@ def test_tool_loop_is_capped():
     assert result["messages"][-1].content == "done"
     tool_turns = sum(1 for m in result["messages"] if m.type == "ai" and m.tool_calls)
     assert tool_turns == 4  # MAX_TOOL_TURNS
+
+
+def test_get_assignments_rejects_a_course_id_the_agent_never_looked_up():
+    deps, client = _deps([Course(id=1, name="Stats", is_favorite=True)])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[
+                    {"name": "get_assignments", "args": {"course_id": 999}, "id": "g1"}
+                ],
+            ),
+            AIMessage(content="Let me look that up properly.", id="c2"),
+        ]
+    )
+    agent = build_agent(deps, model=model)
+    result = agent.invoke({"messages": [("user", "work in stats?")], "date_hints": ""})
+
+    tool_msg = next(m for m in result["messages"] if m.type == "tool")
+    assert "ERROR" in tool_msg.content and "resolve_course" in tool_msg.content
+    client.list_assignments.assert_not_called()
+
+
+def test_get_assignments_allowed_after_resolve_course():
+    deps, client = _deps([Course(id=42, name="Stats", nickname="Stats", is_favorite=True)])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[{"name": "resolve_course", "args": {"query": "stats"}, "id": "r1"}],
+            ),
+            AIMessage(
+                content="",
+                id="c2",
+                tool_calls=[
+                    {"name": "get_assignments", "args": {"course_id": 42}, "id": "g1"}
+                ],
+            ),
+            AIMessage(content="Nothing due.", id="c3"),
+        ]
+    )
+    agent = build_agent(deps, model=model)
+    result = agent.invoke({"messages": [("user", "work in stats?")], "date_hints": ""})
+
+    client.list_assignments.assert_called_once()
+    assert result["messages"][-1].content == "Nothing due."
+
+
+def test_ambiguous_course_pauses_then_resumes_with_the_pick():
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.types import Command
+
+    courses = [
+        Course(id=10, name="AI Strategy", course_code="94-804", is_favorite=True),
+        Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
+    ]
+    deps, _ = _deps(courses)
+    deps.nicknames.learn = MagicMock()
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[{"name": "resolve_course", "args": {"query": "ai"}, "id": "r1"}],
+            ),
+            AIMessage(content="Here's your AI Strategy work.", id="c2"),
+        ]
+    )
+    agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "t1"}}
+
+    paused = agent.invoke(
+        {"messages": [("user", "work in ai?")], "date_hints": "", "clarify": None},
+        config,
+    )
+    interrupt_value = paused["__interrupt__"][0].value
+    assert {o["id"] for o in interrupt_value["options"]} == {10, 20}
+
+    resumed = agent.invoke(Command(resume=10), config)
+
+    deps.nicknames.learn.assert_called_once_with("ai", 10)
+    tool_msg = next(m for m in resumed["messages"] if m.type == "tool")
+    assert "id 10" in tool_msg.content
+    assert resumed["messages"][-1].content == "Here's your AI Strategy work."

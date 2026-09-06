@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from canvas_copilot.agent.tools import AgentDeps, build_tools
+from canvas_copilot.agent.tools import AgentDeps, NeedsClarification, build_tools
 from canvas_copilot.canvas.models import Assignment, Course
 from canvas_copilot.storage.db import connect
 from canvas_copilot.storage.nicknames import NicknameStore
@@ -35,11 +35,11 @@ def test_list_courses(tools):
     assert "AI Strategy" in out and "id 1" in out
 
 
-def test_resolve_course_ambiguous(tools):
+def test_resolve_course_ambiguous_raises_for_clarification(tools):
     tool_map, _ = tools
-    out = tool_map["resolve_course"].invoke({"query": "ai"})
-    assert out.startswith("AMBIGUOUS")
-    assert "id 1" in out and "id 2" in out
+    with pytest.raises(NeedsClarification) as excinfo:
+        tool_map["resolve_course"].invoke({"query": "ai"})
+    assert {c.id for c in excinfo.value.candidates} == {1, 2}
 
 
 def test_resolve_course_resolved(tools):

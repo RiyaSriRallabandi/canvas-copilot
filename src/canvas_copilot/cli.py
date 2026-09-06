@@ -200,9 +200,12 @@ def ask(
     ),
 ) -> None:
     """Ask a natural-language question about your Canvas courses."""
+    import uuid
     from datetime import date
 
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.types import Command
 
     from canvas_copilot.agent import AgentDeps, build_agent
     from canvas_copilot.agent.dates import hints_for
@@ -211,39 +214,58 @@ def ask(
     _, cache, nicknames = _open_storage()
     client = _client()
     deps = AgentDeps(client=client, cache=cache, nicknames=nicknames)
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+
+    def _show_tools(messages: list) -> None:
+        if not verbose:
+            return
+        for message in messages:
+            for call in getattr(message, "tool_calls", None) or []:
+                typer.echo(f"  → {call['name']}({call['args']})", err=True)
+            if isinstance(message, ToolMessage) and message.content:
+                typer.echo(f"  ← {message.content.splitlines()[0]}", err=True)
 
     try:
         agent = build_agent(
             deps,
             model_name=settings.model,
             ollama_host=settings.ollama_host,
+            checkpointer=InMemorySaver(),
         )
-        result = agent.invoke(
+        state = agent.invoke(
             {
                 "messages": [HumanMessage(content=question)],
                 "date_hints": hints_for(question, date.today()),
-            }
+                "clarify": None,
+            },
+            config,
         )
+        _show_tools(state["messages"])
+
+        while state.get("__interrupt__"):
+            prompt_payload = state["__interrupt__"][0].value
+            typer.echo(prompt_payload["prompt"])
+            raw = typer.prompt("Pick a number").strip()
+            options = prompt_payload["options"]
+            try:
+                picked = options[int(raw) - 1]["id"]
+            except (ValueError, IndexError):
+                typer.echo("No selection made.")
+                picked = None
+            state = agent.invoke(Command(resume=picked), config)
+            _show_tools(state["messages"])
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
         raise typer.Exit(1)
     finally:
         client.close()
 
-    messages = result["messages"]
     if verbose:
-        for message in messages:
-            for call in getattr(message, "tool_calls", None) or []:
-                typer.echo(f"  → {call['name']}({call['args']})", err=True)
-            if isinstance(message, ToolMessage):
-                first_line = message.content.splitlines()[0] if message.content else ""
-                typer.echo(f"  ← {first_line}", err=True)
         typer.echo("", err=True)
-
     final = next(
         (
             m.content
-            for m in reversed(messages)
+            for m in reversed(state["messages"])
             if isinstance(m, AIMessage) and m.content
         ),
         "(no answer)",

@@ -14,8 +14,22 @@ from langchain_core.tools import BaseTool, tool
 
 from canvas_copilot.canvas.client import CanvasClient
 from canvas_copilot.canvas.models import Assignment, Course
+from canvas_copilot.resolve import Resolution
 from canvas_copilot.resolve import resolve_course as resolve_course_fn
 from canvas_copilot.storage import CourseCache, NicknameStore
+
+
+class NeedsClarification(Exception):
+    """Raised by resolve_course when the student's reference is ambiguous.
+
+    The graph's tool node catches this and routes to the ``clarify`` node,
+    which asks the student to pick from ``candidates``.
+    """
+
+    def __init__(self, query: str, candidates: list[Course]) -> None:
+        super().__init__(f"ambiguous course reference: {query!r}")
+        self.query = query
+        self.candidates = candidates
 
 
 @dataclass
@@ -26,6 +40,25 @@ class AgentDeps:
 
     def courses(self) -> list[Course]:
         return self.cache.get_courses(self.client.list_courses)
+
+
+def course_label(course: Course) -> str:
+    return f"{course.nickname or course.name} [{course.course_code or '?'}]"
+
+
+def format_resolution(result: Resolution) -> str:
+    tag = " (a past course)" if result.past_course else ""
+    if result.status == "resolved" and result.course:
+        return f"RESOLVED: id {result.course.id} — {course_label(result.course)}{tag}"
+    if result.status == "confirm" and result.course:
+        return (
+            f"UNCERTAIN: closest match is id {result.course.id} — "
+            f"{course_label(result.course)}{tag}. Ask the student to confirm."
+        )
+    return (
+        f'NOT_FOUND: no course matches "{result.query}". '
+        "Tell the student and suggest they check the course name."
+    )
 
 
 def _parse_iso(value: str | None, *, end_of_day: bool = False) -> datetime | None:
@@ -78,31 +111,12 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         """Identify ONE specific course the student named by title, nickname, or
         abbreviation (e.g. "Stats", "my AI class", "36-700"). Call this before
         any course-specific lookup to get the course id. The `query` argument is
-        required and must be the student's own words for the course."""
+        required and must be the student's own words for the course. Do NOT call
+        this for questions about all courses or "any course"."""
         result = resolve_course_fn(query, deps.courses(), deps.nicknames)
-        tag = " (a past course)" if result.past_course else ""
-        if result.status == "resolved" and result.course:
-            c = result.course
-            return f"RESOLVED: id {c.id} — {c.nickname or c.name} [{c.course_code or '?'}]{tag}"
-        if result.status == "confirm" and result.course:
-            c = result.course
-            return (
-                f"UNCERTAIN: closest match is id {c.id} — {c.nickname or c.name}"
-                f" [{c.course_code or '?'}]{tag}. Ask the student to confirm this is right."
-            )
         if result.status == "ambiguous":
-            opts = "\n".join(
-                f"  - id {c.id}: {c.nickname or c.name} [{c.course_code or '?'}]"
-                for c in result.candidates
-            )
-            return (
-                f'AMBIGUOUS: "{query}" could mean several courses:\n{opts}\n'
-                "Ask the student which one they mean and list these options. Do not guess."
-            )
-        return (
-            f'NOT_FOUND: no course matches "{query}". '
-            "Tell the student and suggest they check the course name."
-        )
+            raise NeedsClarification(query, result.candidates)
+        return format_resolution(result)
 
     @tool
     def get_assignments(
@@ -137,4 +151,33 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         labels = {c.id: (c.nickname or c.name or "") for c in deps.courses()}
         return _fmt_assignments(items, course_label=labels)
 
-    return [list_courses, resolve_course, get_assignments, get_todo]
+    @tool
+    def get_upcoming_events() -> str:
+        """Upcoming events and assignment due dates across ALL the student's
+        courses for roughly the next week. Use for "anything coming up",
+        "upcoming quizzes", "what's this week" when no specific course is named."""
+        events = deps.client.get_upcoming_events()
+        if not events:
+            return "Nothing coming up in the next week."
+        lines = []
+        for event in events:
+            title = event.get("title") or "(untitled)"
+            url = event.get("html_url", "")
+            when = event.get("start_at") or (
+                (event.get("assignment") or {}).get("due_at")
+            )
+            when_text = ""
+            if when:
+                try:
+                    when_text = (
+                        f" — {datetime.fromisoformat(when).astimezone():%a %b %d, %I:%M %p}"
+                    )
+                except ValueError:
+                    when_text = ""
+            context = event.get("context_name")
+            suffix = f" ({context})" if context else ""
+            link = f"[{title}]({url})" if url else title
+            lines.append(f"- {link}{when_text}{suffix}")
+        return "\n".join(lines)
+
+    return [list_courses, resolve_course, get_assignments, get_todo, get_upcoming_events]

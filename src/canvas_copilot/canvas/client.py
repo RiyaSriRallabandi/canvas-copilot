@@ -158,6 +158,10 @@ class CanvasClient:
                 todo.append(Assignment.model_validate(assignment))
         return todo
 
+    def get_upcoming_events(self) -> list[dict]:
+        """Raw upcoming events (assignments + calendar events) for ~the next week."""
+        return self._get_paginated("/users/self/upcoming_events")
+
     def list_assignments(
         self,
         course_id: int,

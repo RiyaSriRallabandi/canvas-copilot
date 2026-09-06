@@ -30,6 +30,8 @@ class Course(CanvasModel):
     course_code: str | None = None
     # Filled in from the course_nicknames endpoint, not the course payload.
     nickname: str | None = None
+    # Filled in from the favorites endpoint: True for "starred" dashboard courses.
+    is_favorite: bool = False
 
 
 class Assignment(CanvasModel):

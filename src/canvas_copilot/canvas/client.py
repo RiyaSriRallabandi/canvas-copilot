@@ -121,11 +121,17 @@ class CanvasClient:
         raw = self._get_paginated("/users/self/course_nicknames")
         return [CourseNickname.model_validate(item) for item in raw]
 
+    def list_favorite_course_ids(self) -> set[int]:
+        """Course ids the user has starred (their Canvas dashboard courses)."""
+        raw = self._get_paginated("/users/self/favorites/courses")
+        return {item["id"] for item in raw if "id" in item}
+
     def list_courses(self, *, enrollment_state: str = "active") -> list[Course]:
         raw = self._get_paginated(
             "/courses", {"enrollment_state": enrollment_state}
         )
         nicknames = {n.course_id: n.nickname for n in self.list_course_nicknames()}
+        favorites = self.list_favorite_course_ids()
 
         courses: list[Course] = []
         for item in raw:
@@ -133,7 +139,13 @@ class CanvasClient:
                 continue
             course = Course.model_validate(item)
             course.nickname = nicknames.get(course.id)
+            course.is_favorite = course.id in favorites
             courses.append(course)
+
+        # If the user has starred nothing, treat every active course as current.
+        if not favorites:
+            for course in courses:
+                course.is_favorite = True
         return courses
 
     def list_assignments(

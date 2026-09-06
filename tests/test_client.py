@@ -87,29 +87,49 @@ def test_403_mentions_rate_limit():
             client.get_current_user()
 
 
-def test_list_courses_merges_nicknames():
+def _course_list_handler(courses, nicknames=None, favorites=None):
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/course_nicknames"):
-            return httpx.Response(200, json=[{"course_id": 10, "nickname": "AI"}])
+            return httpx.Response(200, json=nicknames or [])
+        if path.endswith("/favorites/courses"):
+            return httpx.Response(200, json=favorites or [])
         if path.endswith("/courses"):
-            return httpx.Response(
-                200,
-                json=[
-                    {"id": 10, "name": "Intro to AI", "course_code": "11-411"},
-                    {"id": 20, "name": "Statistics", "course_code": "36-700"},
-                    {"access_restricted_by_date": True},
-                ],
-            )
+            return httpx.Response(200, json=courses)
         return httpx.Response(404)
 
+    return handler
+
+
+def test_list_courses_merges_nicknames_and_favorites():
+    handler = _course_list_handler(
+        courses=[
+            {"id": 10, "name": "Intro to AI", "course_code": "11-411"},
+            {"id": 20, "name": "Statistics", "course_code": "36-700"},
+            {"access_restricted_by_date": True},
+        ],
+        nicknames=[{"course_id": 10, "nickname": "AI"}],
+        favorites=[{"id": 20}],
+    )
     with make_client(handler) as client:
         courses = client.list_courses()
 
     by_id = {c.id: c for c in courses}
     assert set(by_id) == {10, 20}  # the restricted stub is dropped
     assert by_id[10].nickname == "AI"
-    assert by_id[20].nickname is None
+    assert by_id[10].is_favorite is False
+    assert by_id[20].is_favorite is True
+
+
+def test_list_courses_marks_all_favorite_when_none_starred():
+    handler = _course_list_handler(
+        courses=[{"id": 1, "name": "A"}, {"id": 2, "name": "B"}],
+        favorites=[],
+    )
+    with make_client(handler) as client:
+        courses = client.list_courses()
+
+    assert all(c.is_favorite for c in courses)
 
 
 def test_list_assignments_filters_by_due_window():

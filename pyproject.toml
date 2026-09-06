@@ -12,8 +12,10 @@ license-files = ["LICENSE"]
 dependencies = [
     "httpx>=0.28.1",
     "keyring>=25.7.0",
+    "platformdirs>=4.11.7",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "rapidfuzz>=3.14.6",
     "typer>=0.27.2",
 ]
 

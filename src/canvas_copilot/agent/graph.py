@@ -18,6 +18,7 @@ reference, ``tools`` defers its result and ``clarify`` pauses the graph
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Annotated, Any, TypedDict
 
@@ -41,6 +42,7 @@ from canvas_copilot.agent.tools import (
     course_label,
 )
 from canvas_copilot.prompts import system_prompt
+from canvas_copilot.resolve import normalize as _normalize
 
 MAX_TOOL_TURNS = 4
 
@@ -61,6 +63,28 @@ class AgentState(TypedDict):
 
 
 _DATE_TOOLS = {"get_todo", "course_assignments"}
+_COURSE_TOOLS = {"course_assignments", "resolve_course"}
+
+# The chunk of a question that names the course: text after "in/for/about/of".
+_COURSE_PHRASE = re.compile(
+    r"\b(?:in|for|about|of)\s+(.+?)"
+    r"(?:\s+(?:this|next|coming|due|by|on|today|tomorrow)\b.*)?[?.!]*$",
+    re.IGNORECASE,
+)
+
+
+def _course_phrase(text: str) -> str:
+    match = _COURSE_PHRASE.search(text)
+    if match and match.group(1).strip():
+        return match.group(1).strip()
+    return text
+
+
+def _last_human_text(messages: list[AnyMessage]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return message.content
+    return ""
 
 
 def _make_model(model_name: str, ollama_host: str) -> BaseChatModel:
@@ -126,6 +150,7 @@ def build_agent(
     def run_tools(state: AgentState) -> dict:
         last = state["messages"][-1]
         window = state.get("date_window")
+        student_phrase = _course_phrase(_last_human_text(state["messages"]))
         results: list[ToolMessage] = []
         clarify: Clarification | None = None
         for call in last.tool_calls:
@@ -136,6 +161,23 @@ def build_agent(
                     tool_call_id=call["id"],
                 ))
                 continue
+
+            # The model often narrows a vague reference ("my AI class" ->
+            # "AI Strategy") before we see it. Re-check the STUDENT's own words
+            # for ambiguity and clarify regardless of what the model passed.
+            if call["name"] in _COURSE_TOOLS:
+                check = deps.resolve(student_phrase)
+                if check.status == "ambiguous":
+                    clarify = {
+                        "tool_call_id": call["id"],
+                        "query": student_phrase,
+                        "options": [
+                            {"id": c.id, "label": course_label(c),
+                             "name": c.nickname or c.name}
+                            for c in check.candidates
+                        ],
+                    }
+                    continue
 
             args = dict(call["args"])
             if call["name"] in _DATE_TOOLS and window and not args.get("due_after"):
@@ -148,7 +190,9 @@ def build_agent(
                     "tool_call_id": call["id"],
                     "query": need.query,
                     "options": [
-                        {"id": c.id, "label": course_label(c)} for c in need.candidates
+                        {"id": c.id, "label": course_label(c),
+                         "name": c.nickname or c.name}
+                        for c in need.candidates
                     ],
                 }
                 continue  # its ToolMessage is emitted by the clarify node
@@ -183,10 +227,12 @@ def build_agent(
             )
             return {"messages": [message], "clarify": None}
 
-        deps.nicknames.learn(pending["query"], chosen["id"])
+        # Remember the pick for the rest of THIS session only (not persisted).
+        deps.session_courses[_normalize(pending["query"])] = chosen["id"]
+        name = chosen.get("name", chosen["label"])
         message = ToolMessage(
-            content=f'The student means "{chosen["label"]}". Call the same tool '
-            f'again with course_query "{chosen["label"]}" to continue.',
+            content=f'The student means "{name}". Call the same tool again with '
+            f'course_query "{name}" to continue.',
             tool_call_id=pending["tool_call_id"],
         )
         return {"messages": [message], "clarify": None}

@@ -7,14 +7,14 @@ the text the model reads back as the tool result.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time
 
 from langchain_core.tools import BaseTool, tool
 
 from canvas_copilot.canvas.client import CanvasClient
 from canvas_copilot.canvas.models import Assignment, Course
-from canvas_copilot.resolve import Resolution
+from canvas_copilot.resolve import Resolution, normalize
 from canvas_copilot.resolve import resolve_course as resolve_course_fn
 from canvas_copilot.storage import CourseCache, NicknameStore
 
@@ -37,9 +37,22 @@ class AgentDeps:
     client: CanvasClient
     cache: CourseCache
     nicknames: NicknameStore
+    # Course picks made during THIS session (normalized phrase -> course id).
+    # Populated when the student answers a clarification; not persisted.
+    session_courses: dict[str, int] = field(default_factory=dict)
 
     def courses(self) -> list[Course]:
         return self.cache.get_courses(self.client.list_courses)
+
+    def resolve(self, query: str) -> Resolution:
+        """Resolve a course reference, honoring this session's earlier picks."""
+        key = normalize(query)
+        course_id = self.session_courses.get(key)
+        if course_id is not None:
+            course = next((c for c in self.courses() if c.id == course_id), None)
+            if course is not None:
+                return Resolution("resolved", query, course=course, reason="session")
+        return resolve_course_fn(query, self.courses(), self.nicknames)
 
 
 def course_label(course: Course) -> str:
@@ -112,7 +125,7 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         or abbreviation — use this only to answer "which course is X" or to
         confirm a course exists. To get a course's assignments, use
         `course_assignments` instead. Pass the student's own words."""
-        result = resolve_course_fn(query, deps.courses(), deps.nicknames)
+        result = deps.resolve(query)
         if result.status == "ambiguous":
             raise NeedsClarification(query, result.candidates)
         return format_resolution(result)
@@ -127,7 +140,7 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         for the course ("AI Strategy", "my stats class", "Strategy") — this tool
         figures out which course that is. Optional `due_after` / `due_before`
         are ISO dates (YYYY-MM-DD) to limit to a window."""
-        result = resolve_course_fn(course_query, deps.courses(), deps.nicknames)
+        result = deps.resolve(course_query)
         if result.status == "ambiguous":
             raise NeedsClarification(course_query, result.candidates)
         if result.course is None:

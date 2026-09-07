@@ -72,13 +72,21 @@ scenarios) with no model change:
    straight to a refusal before the agent runs. System prompt is the backstop.
 4. **Prompt** cut ~50→~40 lines, rules first, one worked example.
 
-## Known residual limitation
+## Course-reference handling (M6 follow-up)
 
-The 3B still sometimes substitutes a specific course title for a vague reference
-("my AI class" → `course_assignments("AI Strategy")`), skipping the clarify
-prompt. Mitigated by: the clarify flow when it *does* pass vague words, and
-auto-learned nicknames after the first pick. The clarify mechanism itself is
-unit-tested. Not worth more effort — a wrong guess just prompts a correction.
+The 3B narrows a vague reference before the tool sees it ("my AI class" →
+`course_assignments("AI Strategy")`). Two fixes:
+
+- **The graph re-checks the student's own words.** `run_tools` extracts the
+  course phrase from the last user message (text after "in/for/about") and
+  resolves *that* for ambiguity — if "my AI class" matches two courses, it
+  clarifies regardless of the title the model passed. Verified live.
+- **Clarification picks are session-scoped**, not persisted. The pick goes into
+  `AgentDeps.session_courses` (lives for one `ask`/`chat` process), so a
+  follow-up in the same conversation reuses it, but a new session starts fresh.
+  Only `nickname add` creates a permanent mapping. `NicknameStore.learn` /
+  `prune_learned` are now unused by the agent (kept for the manual-nickname
+  path and tests).
 
 ## Levers not pulled
 

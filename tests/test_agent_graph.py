@@ -188,30 +188,32 @@ def test_ambiguous_course_pauses_then_resumes_with_the_pick():
         Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
     ]
     deps, _ = _deps(courses)
-    deps.nicknames.learn = MagicMock()
     model = ScriptedModel(
         responses=[
             AIMessage(
                 content="",
                 id="c1",
-                tool_calls=[{"name": "resolve_course", "args": {"query": "ai"}, "id": "r1"}],
+                tool_calls=[{"name": "course_assignments",
+                             "args": {"course_query": "AI Strategy"}, "id": "r1"}],
             ),
-            AIMessage(content="Here's your AI Strategy work.", id="c2"),
+            AIMessage(content="Here's your AI class work.", id="c2"),
         ]
     )
     agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "t1"}}
 
+    # The model narrowed "my AI class" to "AI Strategy"; the graph re-checks the
+    # student's own words and clarifies anyway.
     paused = agent.invoke(
-        {"messages": [("user", "work in ai?")], "date_hints": "", "clarify": None},
+        {"messages": [("user", "do I have work in my AI class?")],
+         "date_hints": "", "date_window": None, "clarify": None},
         config,
     )
     interrupt_value = paused["__interrupt__"][0].value
     assert {o["id"] for o in interrupt_value["options"]} == {10, 20}
 
-    resumed = agent.invoke(Command(resume=10), config)
+    resumed = agent.invoke(Command(resume=20), config)
 
-    deps.nicknames.learn.assert_called_once_with("ai", 10)
-    tool_msg = next(m for m in resumed["messages"] if m.type == "tool")
-    assert "AI Strategy" in tool_msg.content
-    assert resumed["messages"][-1].content == "Here's your AI Strategy work."
+    # remembered for the session (not persisted)
+    assert deps.session_courses == {"ai": 20}
+    assert resumed["messages"][-1].content == "Here's your AI class work."

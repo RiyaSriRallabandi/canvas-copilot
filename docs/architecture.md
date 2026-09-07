@@ -79,9 +79,11 @@ course id — it passes the student's words and gets assignments back.
 ## Storage
 
 A SQLite database (`~/Library/Application Support/canvas-copilot/`) caches the
-course list (24-hour freshness) and holds manually set course nicknames. It is a
-lookup accelerator, not a record of Canvas data. Schema changes are applied by a
-small ordered list of migrations tracked with `PRAGMA user_version`.
+course list (24-hour freshness), holds manually set course nicknames, and stores
+the chunked text of each course's syllabus, pages, announcements, and assignment
+descriptions (built by `canvas-copilot index`). It is a lookup accelerator, not
+a record of Canvas data. Schema changes are applied by a small ordered list of
+migrations tracked with `PRAGMA user_version`.
 
 The Canvas token is kept in the OS keychain, never in a file.
 

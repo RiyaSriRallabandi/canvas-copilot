@@ -12,7 +12,14 @@ from typing import Any, Protocol
 
 import httpx
 
-from canvas_copilot.canvas.models import Assignment, Course, CourseNickname, User
+from canvas_copilot.canvas.models import (
+    Announcement,
+    Assignment,
+    Course,
+    CourseNickname,
+    Page,
+    User,
+)
 
 _MAX_PAGES = 50
 _PER_PAGE = 100
@@ -191,3 +198,31 @@ class CanvasClient:
         if due_before is not None:
             assignments = [a for a in assignments if a.due_at and a.due_at <= due_before]
         return assignments
+
+    # -- unstructured content (for indexing) ---------------------------
+
+    def get_syllabus(self, course_id: int) -> str | None:
+        course = self._get_one(f"/courses/{course_id}", {"include[]": "syllabus_body"})
+        return course.get("syllabus_body") or None
+
+    def list_files(self, course_id: int) -> list[dict]:
+        return self._get_paginated(f"/courses/{course_id}/files")
+
+    def download_file(self, url: str) -> bytes:
+        return self._request("GET", url).content
+
+    def list_pages(self, course_id: int) -> list[Page]:
+        raw = self._get_paginated(f"/courses/{course_id}/pages")
+        return [Page.model_validate(item) for item in raw if item.get("url")]
+
+    def get_page(self, course_id: int, page_url: str) -> Page:
+        return Page.model_validate(
+            self._get_one(f"/courses/{course_id}/pages/{page_url}")
+        )
+
+    def list_announcements(self, course_id: int) -> list[Announcement]:
+        raw = self._get_paginated(
+            "/announcements",
+            {"context_codes[]": f"course_{course_id}", "per_page": 50},
+        )
+        return [Announcement.model_validate(item) for item in raw]

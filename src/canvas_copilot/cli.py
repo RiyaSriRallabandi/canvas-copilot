@@ -125,6 +125,50 @@ def refresh() -> None:
 
 
 @app.command()
+def index(
+    course: str | None = typer.Argument(None, help="A course name or nickname."),
+    all_courses: bool = typer.Option(False, "--all", help="Index every starred course."),
+) -> None:
+    """Fetch and store a course's syllabus, pages, and announcements for search."""
+    from canvas_copilot.content.ingest import ingest_course
+    from canvas_copilot.storage.content import ContentStore
+
+    conn, cache, nicknames = _open_storage()
+    try:
+        course_list = cache.get_courses(_fetch_courses)
+    except CanvasError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+    if all_courses:
+        targets = [c for c in course_list if c.is_favorite] or course_list
+    elif course:
+        result = resolve_course(course, course_list, nicknames)
+        if result.status != "resolved" or result.course is None:
+            _print_resolution(result, course_list)
+            raise typer.Exit(1)
+        targets = [result.course]
+    else:
+        typer.echo("Name a course, or use --all.")
+        raise typer.Exit(1)
+
+    store = ContentStore(conn)
+    client = _client()
+    try:
+        for target in targets:
+            outcome = ingest_course(client, target.id, store)
+            parts = ", ".join(f"{n} {kind}" for kind, n in outcome.counts.items() if n)
+            typer.echo(
+                f"{target.nickname or target.name}: {outcome.total} chunks ({parts or 'nothing found'})"
+            )
+    except CanvasError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        client.close()
+
+
+@app.command()
 def resolve(
     query: str,
     all_courses: bool = typer.Option(

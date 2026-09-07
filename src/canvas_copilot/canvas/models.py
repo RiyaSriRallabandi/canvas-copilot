@@ -49,6 +49,7 @@ class Assignment(CanvasModel):
     id: int
     course_id: int | None = None
     name: str
+    description: str | None = None  # HTML; only used for content indexing
     due_at: datetime | None = None
     unlock_at: datetime | None = None
     lock_at: datetime | None = None
@@ -67,3 +68,18 @@ class Assignment(CanvasModel):
 class CourseNickname(CanvasModel):
     course_id: int
     nickname: str
+
+
+class Page(CanvasModel):
+    url: str  # the page's slug, used to fetch its body
+    title: str | None = None
+    body: str | None = None  # HTML, populated by get_page
+    html_url: str | None = None
+
+
+class Announcement(CanvasModel):
+    id: int
+    title: str | None = None
+    message: str | None = None  # HTML
+    html_url: str | None = None
+    posted_at: datetime | None = None

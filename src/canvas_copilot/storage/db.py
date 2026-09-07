@@ -41,6 +41,24 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE courses ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    CREATE TABLE content_chunks (
+        id           INTEGER PRIMARY KEY,
+        course_id    INTEGER NOT NULL,
+        source_type  TEXT NOT NULL,      -- syllabus | page | announcement | assignment
+        source_title TEXT,
+        source_url   TEXT,
+        chunk_index  INTEGER NOT NULL,
+        text         TEXT NOT NULL,
+        indexed_at   TEXT NOT NULL
+    );
+    CREATE INDEX ix_content_chunks_course ON content_chunks(course_id);
+
+    CREATE TABLE content_index_meta (
+        course_id  INTEGER PRIMARY KEY,
+        indexed_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

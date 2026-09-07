@@ -77,10 +77,13 @@ scenarios) with no model change:
 The 3B narrows a vague reference before the tool sees it ("my AI class" →
 `course_assignments("AI Strategy")`). Two fixes:
 
-- **The graph re-checks the student's own words.** `run_tools` extracts the
-  course phrase from the last user message (text after "in/for/about") and
-  resolves *that* for ambiguity — if "my AI class" matches two courses, it
-  clarifies regardless of the title the model passed. Verified live.
+- **The student's own words are authoritative.** `run_tools` extracts an
+  explicit course phrase from the last user message — text after "in/for/about"
+  that isn't a pronoun. If present it is resolved and *overrides* the model's
+  `course_query` (ambiguous → clarify; resolved → use the canonical name). If
+  there's no explicit phrase but the message refers back ("does it...", "that
+  class"), the last resolved course this session is used. Only if neither
+  applies does the model's guess go through. Verified live.
 - **Clarification picks are session-scoped**, not persisted. The pick goes into
   `AgentDeps.session_courses` (lives for one `ask`/`chat` process), so a
   follow-up in the same conversation reuses it, but a new session starts fresh.

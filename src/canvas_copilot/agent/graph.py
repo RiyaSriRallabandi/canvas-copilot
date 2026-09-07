@@ -65,19 +65,32 @@ class AgentState(TypedDict):
 _DATE_TOOLS = {"get_todo", "course_assignments"}
 _COURSE_TOOLS = {"course_assignments", "resolve_course"}
 
-# The chunk of a question that names the course: text after "in/for/about/of".
+_PRONOUNS = {"it", "that", "this", "them", "those", "the same", "that one", "this one"}
+
+# The chunk of a question that names a course: text after "in/for/about".
 _COURSE_PHRASE = re.compile(
-    r"\b(?:in|for|about|of)\s+(.+?)"
+    r"\b(?:in|for|about)\s+(.+?)"
     r"(?:\s+(?:this|next|coming|due|by|on|today|tomorrow)\b.*)?[?.!]*$",
     re.IGNORECASE,
 )
+# A follow-up referring back to a course already discussed.
+_PRONOUN_REF = re.compile(r"\b(it|that class|that course|the same( one)?|this class)\b", re.I)
 
 
-def _course_phrase(text: str) -> str:
+def _course_phrase(text: str) -> str | None:
+    """An explicit course reference in the question, or None.
+
+    None when there is no "in/for/about X", or X is just a pronoun.
+    """
     match = _COURSE_PHRASE.search(text)
-    if match and match.group(1).strip():
-        return match.group(1).strip()
-    return text
+    if not match or not match.group(1).strip():
+        return None
+    phrase = match.group(1).strip()
+    return None if _normalize(phrase) in _PRONOUNS else phrase
+
+
+def _refers_back(text: str) -> bool:
+    return _course_phrase(text) is None and bool(_PRONOUN_REF.search(text))
 
 
 def _last_human_text(messages: list[AnyMessage]) -> str:
@@ -150,7 +163,8 @@ def build_agent(
     def run_tools(state: AgentState) -> dict:
         last = state["messages"][-1]
         window = state.get("date_window")
-        student_phrase = _course_phrase(_last_human_text(state["messages"]))
+        student_text = _last_human_text(state["messages"])
+        phrase = _course_phrase(student_text)
         results: list[ToolMessage] = []
         clarify: Clarification | None = None
         for call in last.tool_calls:
@@ -162,24 +176,35 @@ def build_agent(
                 ))
                 continue
 
-            # The model often narrows a vague reference ("my AI class" ->
-            # "AI Strategy") before we see it. Re-check the STUDENT's own words
-            # for ambiguity and clarify regardless of what the model passed.
-            if call["name"] in _COURSE_TOOLS:
-                check = deps.resolve(student_phrase)
-                if check.status == "ambiguous":
-                    clarify = {
-                        "tool_call_id": call["id"],
-                        "query": student_phrase,
-                        "options": [
-                            {"id": c.id, "label": course_label(c),
-                             "name": c.nickname or c.name}
-                            for c in check.candidates
-                        ],
-                    }
-                    continue
-
             args = dict(call["args"])
+
+            # The student's own words are authoritative for which course. The
+            # model tends to narrow ("my AI class" -> "AI Strategy") or guess.
+            if call["name"] in _COURSE_TOOLS:
+                arg_key = "course_query" if call["name"] == "course_assignments" else "query"
+                if phrase is not None:
+                    check = deps.resolve(phrase)
+                    if check.status == "ambiguous":
+                        clarify = {
+                            "tool_call_id": call["id"],
+                            "query": phrase,
+                            "options": [
+                                {"id": c.id, "label": course_label(c),
+                                 "name": c.nickname or c.name}
+                                for c in check.candidates
+                            ],
+                        }
+                        continue
+                    if check.status == "resolved" and check.course:
+                        args[arg_key] = check.course.name
+                elif _refers_back(student_text) and deps.last_course_id:
+                    prev = next(
+                        (c for c in deps.courses() if c.id == deps.last_course_id),
+                        None,
+                    )
+                    if prev:
+                        args[arg_key] = prev.name
+
             if call["name"] in _DATE_TOOLS and window and not args.get("due_after"):
                 args["due_after"], args["due_before"] = window
 

@@ -102,6 +102,56 @@ def test_tool_loop_is_capped():
     assert tool_turns == 4  # MAX_TOOL_TURNS
 
 
+def test_explicit_course_phrase_overrides_the_models_guess():
+    courses = [
+        Course(id=10, name="AI Strategy", is_favorite=True),
+        Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
+    ]
+    deps, client = _deps(courses)
+    model = ScriptedModel(responses=[
+        AIMessage(content="", id="c1", tool_calls=[
+            {"name": "course_assignments", "args": {"course_query": "AI Strategy"}, "id": "g1"}
+        ]),
+        AIMessage(content="done", id="c2"),
+    ])
+    agent = build_agent(deps, model=model)
+    agent.invoke({
+        "messages": [("user", "what is due in Introduction to Artificial Intelligence?")],
+        "date_hints": "", "date_window": None, "clarify": None,
+    })
+    # model said "AI Strategy" (10); the student's words win -> course 20
+    assert client.list_assignments.call_args.args[0] == 20
+
+
+def test_pronoun_followup_uses_the_last_resolved_course():
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    courses = [
+        Course(id=10, name="AI Strategy", is_favorite=True),
+        Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
+    ]
+    deps, client = _deps(courses)
+    model = ScriptedModel(responses=[
+        AIMessage(content="", id="a1", tool_calls=[
+            {"name": "course_assignments",
+             "args": {"course_query": "Introduction to Artificial Intelligence"}, "id": "g1"}
+        ]),
+        AIMessage(content="ok", id="a2"),
+        AIMessage(content="", id="a3", tool_calls=[
+            {"name": "course_assignments", "args": {"course_query": "AI Strategy"}, "id": "g2"}
+        ]),
+        AIMessage(content="ok2", id="a4"),
+    ])
+    agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "t"}}
+    agent.invoke({"messages": [("user", "assignments in Introduction to Artificial Intelligence?")],
+                  "date_hints": "", "date_window": None, "clarify": None}, config)
+    agent.invoke({"messages": [("user", "does it have a final exam?")],
+                  "date_hints": "", "date_window": None, "clarify": None}, config)
+    # "it" -> the last course (20), not the model's "AI Strategy" (10)
+    assert client.list_assignments.call_args.args[0] == 20
+
+
 def test_solve_request_is_refused_before_the_model_runs():
     deps, client = _deps()
     model = ScriptedModel(responses=[AIMessage(content="should not be reached")])

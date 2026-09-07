@@ -40,6 +40,8 @@ class AgentDeps:
     # Course picks made during THIS session (normalized phrase -> course id).
     # Populated when the student answers a clarification; not persisted.
     session_courses: dict[str, int] = field(default_factory=dict)
+    # The last course successfully resolved this session, for "it" / "that class".
+    last_course_id: int | None = None
 
     def courses(self) -> list[Course]:
         return self.cache.get_courses(self.client.list_courses)
@@ -51,8 +53,12 @@ class AgentDeps:
         if course_id is not None:
             course = next((c for c in self.courses() if c.id == course_id), None)
             if course is not None:
+                self.last_course_id = course.id
                 return Resolution("resolved", query, course=course, reason="session")
-        return resolve_course_fn(query, self.courses(), self.nicknames)
+        result = resolve_course_fn(query, self.courses(), self.nicknames)
+        if result.status == "resolved" and result.course is not None:
+            self.last_course_id = result.course.id
+        return result
 
 
 def course_label(course: Course) -> str:

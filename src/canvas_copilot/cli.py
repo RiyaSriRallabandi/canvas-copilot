@@ -130,9 +130,12 @@ def index(
     all_courses: bool = typer.Option(False, "--all", help="Index every starred course."),
 ) -> None:
     """Fetch and store a course's syllabus, pages, and announcements for search."""
+    from canvas_copilot.content.embed import Embedder, EmbedError
     from canvas_copilot.content.ingest import ingest_course
+    from canvas_copilot.content.search import embed_course
     from canvas_copilot.storage.content import ContentStore
 
+    settings = get_settings()
     conn, cache, nicknames = _open_storage()
     try:
         course_list = cache.get_courses(_fetch_courses)
@@ -153,19 +156,60 @@ def index(
         raise typer.Exit(1)
 
     store = ContentStore(conn)
+    embedder = Embedder(settings.embed_model, settings.ollama_host)
     client = _client()
     try:
         for target in targets:
             outcome = ingest_course(client, target.id, store)
             parts = ", ".join(f"{n} {kind}" for kind, n in outcome.counts.items() if n)
+            embedded = embed_course(conn, embedder, target.id)
             typer.echo(
-                f"{target.nickname or target.name}: {outcome.total} chunks ({parts or 'nothing found'})"
+                f"{target.nickname or target.name}: {outcome.total} chunks "
+                f"({parts or 'nothing found'}), {embedded} embedded"
             )
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
         raise typer.Exit(1) from exc
+    except EmbedError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1) from exc
     finally:
         client.close()
+
+
+@app.command()
+def search(course: str, question: str) -> None:
+    """Show the indexed passages closest to a question (diagnostic)."""
+    from canvas_copilot.content.embed import Embedder, EmbedError
+    from canvas_copilot.content.search import search as search_content
+
+    settings = get_settings()
+    conn, cache, nicknames = _open_storage()
+    try:
+        course_list = cache.get_courses(_fetch_courses)
+    except CanvasError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+    result = resolve_course(course, course_list, nicknames)
+    if result.status != "resolved" or result.course is None:
+        _print_resolution(result, course_list)
+        raise typer.Exit(1)
+
+    embedder = Embedder(settings.embed_model, settings.ollama_host)
+    try:
+        passages = search_content(conn, embedder, result.course.id, question)
+    except EmbedError as exc:
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(1) from exc
+
+    if not passages:
+        typer.echo("Nothing indexed for that course. Run `canvas-copilot index` first.")
+        return
+    for p in passages:
+        loc = f"{p.source_type}: {p.source_title}" if p.source_title else p.source_type
+        typer.echo(f"\n[{p.distance:.3f}] {loc}\n  {p.source_url or ''}")
+        typer.echo("  " + p.text[:400].replace("\n", "\n  "))
 
 
 @app.command()

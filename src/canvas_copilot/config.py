@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     # e.g. https://canvas.cmu.edu/api/v1
     canvas_base_url: str = ""
 
-    # Local Ollama model + host for the agent.
+    # Local Ollama models + host.
     model: str = "qwen2.5:3b"
+    embed_model: str = "nomic-embed-text"
     ollama_host: str = "http://localhost:11434"
 
 

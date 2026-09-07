@@ -21,15 +21,13 @@ def test_scenarios_load():
 def test_score_turn_tool_order_and_answer():
     turn = Turn(
         user="x",
-        tools_called=("resolve_course", "get_assignments"),
+        tools_called=("course_assignments",),
         answer_contains=("Problem Set 6",),
         answer_excludes=("Assignment name",),
     )
     messages = [
-        AIMessage(content="", tool_calls=[{"name": "resolve_course", "args": {"query": "stats"}, "id": "1"}]),
-        ToolMessage(content="RESOLVED: id 3", tool_call_id="1"),
-        AIMessage(content="", tool_calls=[{"name": "get_assignments", "args": {"course_id": 3}, "id": "2"}]),
-        ToolMessage(content="- Problem Set 6", tool_call_id="2"),
+        AIMessage(content="", tool_calls=[{"name": "course_assignments", "args": {"course_query": "stats"}, "id": "1"}]),
+        ToolMessage(content="- Problem Set 6", tool_call_id="1"),
         AIMessage(content="You have Problem Set 6 due."),
     ]
     results = score_turn(turn, messages)

@@ -20,10 +20,16 @@ def test_today_and_tomorrow():
     assert ranges["tomorrow"].start == date(2026, 9, 10)
 
 
-def test_this_week_runs_from_today_to_sunday():
+def test_this_week_is_the_next_seven_days():
     (week,) = resolve_date_phrases("what's due this week", WED)
-    assert week.start == WED  # today, not the start of the calendar week
-    assert week.end == date(2026, 9, 13)  # the coming Sunday
+    assert week.start == WED
+    assert week.end == date(2026, 9, 15)
+
+
+def test_next_week_is_the_following_seven_days():
+    (week,) = resolve_date_phrases("what's due next week", WED)
+    assert week.start == date(2026, 9, 16)
+    assert week.end == date(2026, 9, 22)
 
 
 def test_next_week_wins_over_this_week():

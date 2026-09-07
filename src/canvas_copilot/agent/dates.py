@@ -23,8 +23,6 @@ class DateRange:
         return f'"{self.label}" is {self.start.isoformat()} to {self.end.isoformat()}'
 
 
-def _week_ending_sunday(d: date) -> date:
-    return d + timedelta(days=(6 - d.weekday()))
 
 
 def resolve_date_phrases(text: str, today: date) -> list[DateRange]:
@@ -50,12 +48,10 @@ def resolve_date_phrases(text: str, today: date) -> list[DateRange]:
             add(DateRange(label, day, day))
 
     if re.search(r"\bnext week\b", lowered):
-        # The next calendar week, Monday to Sunday.
-        next_monday = today + timedelta(days=(7 - today.weekday()))
-        add(DateRange("next week", next_monday, next_monday + timedelta(days=6)))
+        add(DateRange("next week", today + timedelta(days=7), today + timedelta(days=13)))
     elif re.search(r"\b(this )?week\b", lowered):
-        # "due this week" = from today through the coming Sunday.
-        add(DateRange("this week", today, _week_ending_sunday(today)))
+        # "due this week" = the next 7 days (no weekday edge cases).
+        add(DateRange("this week", today, today + timedelta(days=6)))
 
     if re.search(r"\bweekend\b", lowered):
         saturday = today + timedelta(days=(5 - today.weekday()) % 7)
@@ -67,3 +63,14 @@ def resolve_date_phrases(text: str, today: date) -> list[DateRange]:
 def hints_for(text: str, today: date) -> str:
     ranges = resolve_date_phrases(text, today)
     return "; ".join(r.as_hint() for r in ranges)
+
+
+def primary_window(text: str, today: date) -> tuple[str, str] | None:
+    """The first recognized date range as ISO strings, for injecting into tool
+    calls when the model omits the dates. None if the question names no range.
+    """
+    ranges = resolve_date_phrases(text, today)
+    if not ranges:
+        return None
+    first = ranges[0]
+    return first.start.isoformat(), first.end.isoformat()

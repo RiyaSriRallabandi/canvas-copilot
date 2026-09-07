@@ -48,7 +48,7 @@ def test_resolve_course_resolved(tools):
     assert out.startswith("RESOLVED") and "id 3" in out
 
 
-def test_get_assignments_formats_links(tools):
+def test_course_assignments_resolves_course_and_formats_links(tools):
     tool_map, client = tools
     client.list_assignments.return_value = [
         Assignment(
@@ -58,15 +58,23 @@ def test_get_assignments_formats_links(tools):
             html_url="https://canvas.cmu.edu/courses/3/assignments/9",
         )
     ]
-    out = tool_map["get_assignments"].invoke({"course_id": 3})
+    out = tool_map["course_assignments"].invoke({"course_query": "stats"})
+    # resolved to course id 3 internally
+    assert client.list_assignments.call_args.args[0] == 3
     assert "[Problem Set 1](https://canvas.cmu.edu/courses/3/assignments/9)" in out
 
 
-def test_get_assignments_passes_iso_window(tools):
+def test_course_assignments_ambiguous_raises(tools):
+    tool_map, _ = tools
+    with pytest.raises(NeedsClarification):
+        tool_map["course_assignments"].invoke({"course_query": "ai"})
+
+
+def test_course_assignments_passes_iso_window(tools):
     tool_map, client = tools
     client.list_assignments.return_value = []
-    tool_map["get_assignments"].invoke(
-        {"course_id": 3, "due_after": "2026-09-09", "due_before": "2026-09-13"}
+    tool_map["course_assignments"].invoke(
+        {"course_query": "stats", "due_after": "2026-09-09", "due_before": "2026-09-13"}
     )
     _, kwargs = client.list_assignments.call_args
     assert kwargs["due_after"].date().isoformat() == "2026-09-09"

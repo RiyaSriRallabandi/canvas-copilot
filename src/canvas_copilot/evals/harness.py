@@ -10,7 +10,7 @@ from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from canvas_copilot.agent.dates import hints_for
+from canvas_copilot.agent.dates import hints_for, primary_window
 from canvas_copilot.agent.graph import build_agent
 from canvas_copilot.agent.tools import AgentDeps
 from canvas_copilot.evals.fixtures import SEED_NICKNAMES, TODAY, FakeCanvasClient
@@ -55,6 +55,7 @@ def run_scenario(agent, scenario: Scenario) -> list[TurnTranscript]:
             {
                 "messages": [HumanMessage(content=turn.user)],
                 "date_hints": hints_for(turn.user, TODAY),
+                "date_window": primary_window(turn.user, TODAY),
                 "clarify": None,
             },
             config,

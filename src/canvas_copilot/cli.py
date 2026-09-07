@@ -240,13 +240,15 @@ def _converse(agent, config, question: str, *, verbose: bool) -> str:
     from langchain_core.messages import AIMessage, HumanMessage
     from langgraph.types import Command
 
-    from canvas_copilot.agent.dates import hints_for
+    from canvas_copilot.agent.dates import hints_for, primary_window
 
     seen: set = set()
+    today = date.today()
     state = agent.invoke(
         {
             "messages": [HumanMessage(content=question)],
-            "date_hints": hints_for(question, date.today()),
+            "date_hints": hints_for(question, today),
+            "date_window": primary_window(question, today),
             "clarify": None,
         },
         config,

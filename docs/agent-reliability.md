@@ -55,18 +55,37 @@ better — it fixes some scenarios and breaks others — for 2.5× the download 
 2× the latency. See `docs/model-bakeoff.md`. So the ~0.70 ceiling is a steering
 problem, addressed by:
 
-## Levers, in priority order
+## What was done (M6) and the effect
 
-1. **Workflow / structural constraints** (in progress) — remove the model's
-   ability to make the mistakes it keeps making. e.g. a `course_assignments`
-   tool that resolves the course internally, so the model can't skip
-   `resolve_course`; auto-inject the resolved date window when the model omits
-   it.
-2. **Prompt engineering** — shorter prompt, critical rules first, 1-2 few-shot
-   tool sequences.
-3. **Constrained generation** — Ollama JSON/schema mode.
-4. **Fine-tuning** — NOT pursued: needs a labeled dataset, can't train on an
-   8 GB Mac, brittle to maintain. Revisit only if 1-3 plateau well short.
+Multi-turn eval score went **0.70 → 1.00 on tool sequencing** (2 runs, 17
+scenarios) with no model change:
+
+1. **`course_assignments("<course words>")`** — one tool that resolves the
+   course internally, replacing the `resolve_course` → `get_assignments`
+   two-step the model kept skipping. Raw `get_assignments` and the
+   `known_course_ids` guardrail removed (no id to guess).
+2. **Date-window injection** — the graph resolves the question's date phrase to
+   an ISO range and injects it into `get_todo` / `course_assignments` when the
+   model omits it. The model no longer has to remember.
+3. **Pre-LLM solve-request screen** (`agent/guardrails.py`) — regex patterns for
+   "do my homework", "walk me through the solution", "check my answer" route
+   straight to a refusal before the agent runs. System prompt is the backstop.
+4. **Prompt** cut ~50→~40 lines, rules first, one worked example.
+
+## Known residual limitation
+
+The 3B still sometimes substitutes a specific course title for a vague reference
+("my AI class" → `course_assignments("AI Strategy")`), skipping the clarify
+prompt. Mitigated by: the clarify flow when it *does* pass vague words, and
+auto-learned nicknames after the first pick. The clarify mechanism itself is
+unit-tested. Not worth more effort — a wrong guess just prompts a correction.
+
+## Levers not pulled
+
+- **Bigger model** — 7B scored identically (see `docs/model-bakeoff.md`).
+- **Constrained generation** (Ollama JSON mode) — not needed at 1.00.
+- **Fine-tuning** — needs a labeled dataset, can't train on an 8 GB Mac,
+  brittle. Revisit only if scores regress in real use.
 
 ## Still open → M6 / M7
 

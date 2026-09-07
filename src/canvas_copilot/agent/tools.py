@@ -108,31 +108,38 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
 
     @tool
     def resolve_course(query: str) -> str:
-        """Identify ONE specific course the student named by title, nickname, or
-        abbreviation (e.g. "Stats", "my AI class", "36-700"). Call this before
-        any course-specific lookup to get the course id. The `query` argument is
-        required and must be the student's own words for the course. Do NOT call
-        this for questions about all courses or "any course"."""
+        """Look up which specific course the student means by a name, nickname,
+        or abbreviation — use this only to answer "which course is X" or to
+        confirm a course exists. To get a course's assignments, use
+        `course_assignments` instead. Pass the student's own words."""
         result = resolve_course_fn(query, deps.courses(), deps.nicknames)
         if result.status == "ambiguous":
             raise NeedsClarification(query, result.candidates)
         return format_resolution(result)
 
     @tool
-    def get_assignments(
-        course_id: int,
+    def course_assignments(
+        course_query: str,
         due_after: str | None = None,
         due_before: str | None = None,
     ) -> str:
-        """Get assignments for ONE course by its numeric id (from resolve_course
-        or list_courses). Optionally filter to a due-date window with ISO dates
-        (YYYY-MM-DD): due_after / due_before."""
+        """Assignments for ONE course. `course_query` is the student's own words
+        for the course ("AI Strategy", "my stats class", "Strategy") — this tool
+        figures out which course that is. Optional `due_after` / `due_before`
+        are ISO dates (YYYY-MM-DD) to limit to a window."""
+        result = resolve_course_fn(course_query, deps.courses(), deps.nicknames)
+        if result.status == "ambiguous":
+            raise NeedsClarification(course_query, result.candidates)
+        if result.course is None:
+            return format_resolution(result)
         assignments = deps.client.list_assignments(
-            course_id,
+            result.course.id,
             due_after=_parse_iso(due_after),
             due_before=_parse_iso(due_before, end_of_day=True),
         )
-        return _fmt_assignments(assignments)
+        header = f"{course_label(result.course)}:"
+        past = " (this is a past course)" if result.past_course else ""
+        return f"{header}{past}\n{_fmt_assignments(assignments)}"
 
     @tool
     def get_todo(due_after: str | None = None, due_before: str | None = None) -> str:
@@ -180,4 +187,10 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
             lines.append(f"- {link}{when_text}{suffix}")
         return "\n".join(lines)
 
-    return [list_courses, resolve_course, get_assignments, get_todo, get_upcoming_events]
+    return [
+        list_courses,
+        resolve_course,
+        course_assignments,
+        get_todo,
+        get_upcoming_events,
+    ]

@@ -71,6 +71,8 @@ FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
     54829: [  # Negotiation
         Assignment(id=10, course_id=54829, name="Negotiation exercise #2", due_at=_dt(17),
                    html_url=_URL.format(c=54829, a=10)),
+        Assignment(id=12, course_id=54829, name="Pre-class Reading", due_at=_dt(16, hour=17),
+                   html_url=_URL.format(c=54829, a=12)),
     ],
     55115: [],
     54550: [],
@@ -81,6 +83,7 @@ FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
 }
 
 FAKE_TODO = [
+    FAKE_ASSIGNMENTS[54829][1],  # Pre-class Reading - Mar 16
     FAKE_ASSIGNMENTS[54829][0],  # Negotiation exercise #2 - Mar 17
     FAKE_ASSIGNMENTS[55274][1],  # Canvas 1 Team Assignment - Mar 18
     FAKE_ASSIGNMENTS[55751][1],  # Lab 5 - Mar 19

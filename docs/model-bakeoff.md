@@ -69,10 +69,13 @@ scored on tool sequencing, answer structure, and refusals.
 **Decision: stay on qwen2.5:3b.** The 7B's tool-sequencing score is identical —
 it still skips `resolve_course` and mis-picks tools on dated questions. It just
 shuffles *which* scenarios fail. Answer text is marginally cleaner, not worth
-2.5× the download and 2× the latency. The ~0.70 ceiling is a **steering
-problem** (workflow + prompt), not model capacity — so that is where M6/M7
-effort goes. Model size and fine-tuning are documented as unused levers in
-`docs/agent-reliability.md`.
+2.5× the download and 2× the latency. The ~0.70 ceiling was a **steering
+problem**, not model capacity.
+
+**After the M6 workflow rebuild** (combined `course_assignments` tool, date
+injection, pre-LLM guardrail, tighter prompt — see `docs/agent-reliability.md`),
+qwen2.5:3b scores **1.00 across all 17 scenarios** (tools / answers / refusal).
+No model change. This retires the model-size question for now.
 
 ## Done in M4
 

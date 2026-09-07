@@ -102,52 +102,42 @@ def test_tool_loop_is_capped():
     assert tool_turns == 4  # MAX_TOOL_TURNS
 
 
-def test_get_assignments_rejects_a_course_id_the_agent_never_looked_up():
-    deps, client = _deps([Course(id=1, name="Stats", is_favorite=True)])
-    model = ScriptedModel(
-        responses=[
-            AIMessage(
-                content="",
-                id="c1",
-                tool_calls=[
-                    {"name": "get_assignments", "args": {"course_id": 999}, "id": "g1"}
-                ],
-            ),
-            AIMessage(content="Let me look that up properly.", id="c2"),
-        ]
-    )
+def test_solve_request_is_refused_before_the_model_runs():
+    deps, client = _deps()
+    model = ScriptedModel(responses=[AIMessage(content="should not be reached")])
     agent = build_agent(deps, model=model)
-    result = agent.invoke({"messages": [("user", "work in stats?")], "date_hints": ""})
-
-    tool_msg = next(m for m in result["messages"] if m.type == "tool")
-    assert "ERROR" in tool_msg.content and "resolve_course" in tool_msg.content
+    result = agent.invoke({
+        "messages": [("user", "write the code for my homework for me")],
+        "date_hints": "", "date_window": None, "clarify": None,
+    })
+    answer = result["messages"][-1].content
+    assert "can't help" in answer.lower()
+    client.get_todo.assert_not_called()
     client.list_assignments.assert_not_called()
 
 
-def test_get_assignments_allowed_after_resolve_course():
-    deps, client = _deps([Course(id=42, name="Stats", nickname="Stats", is_favorite=True)])
+def test_course_assignments_injects_the_date_window():
+    deps, client = _deps([Course(id=7, name="Stats", nickname="Stats", is_favorite=True)])
     model = ScriptedModel(
         responses=[
             AIMessage(
-                content="",
-                id="c1",
-                tool_calls=[{"name": "resolve_course", "args": {"query": "stats"}, "id": "r1"}],
+                content="", id="c1",
+                tool_calls=[{"name": "course_assignments",
+                             "args": {"course_query": "stats"}, "id": "g1"}],
             ),
-            AIMessage(
-                content="",
-                id="c2",
-                tool_calls=[
-                    {"name": "get_assignments", "args": {"course_id": 42}, "id": "g1"}
-                ],
-            ),
-            AIMessage(content="Nothing due.", id="c3"),
+            AIMessage(content="Here you go.", id="c2"),
         ]
     )
     agent = build_agent(deps, model=model)
-    result = agent.invoke({"messages": [("user", "work in stats?")], "date_hints": ""})
-
-    client.list_assignments.assert_called_once()
-    assert result["messages"][-1].content == "Nothing due."
+    agent.invoke({
+        "messages": [("user", "what's due this week in stats?")],
+        "date_hints": "",
+        "date_window": ("2026-03-16", "2026-03-22"),
+        "clarify": None,
+    })
+    # the model omitted the dates; the graph injected them
+    _, kwargs = client.list_assignments.call_args
+    assert kwargs["due_after"].date().isoformat() == "2026-03-16"
 
 
 def test_conversation_remembers_the_resolved_course_across_turns():
@@ -158,12 +148,14 @@ def test_conversation_remembers_the_resolved_course_across_turns():
         responses=[
             AIMessage(
                 content="", id="a1",
-                tool_calls=[{"name": "resolve_course", "args": {"query": "stats"}, "id": "r1"}],
+                tool_calls=[{"name": "course_assignments",
+                             "args": {"course_query": "stats"}, "id": "g1"}],
             ),
             AIMessage(content="No homework.", id="a2"),
             AIMessage(
                 content="", id="a3",
-                tool_calls=[{"name": "get_assignments", "args": {"course_id": 7}, "id": "g1"}],
+                tool_calls=[{"name": "course_assignments",
+                             "args": {"course_query": "stats"}, "id": "g2"}],
             ),
             AIMessage(content="No quizzes either.", id="a4"),
         ]
@@ -172,18 +164,17 @@ def test_conversation_remembers_the_resolved_course_across_turns():
     config = {"configurable": {"thread_id": "chat-1"}}
 
     first = agent.invoke(
-        {"messages": [("user", "homework in stats?")], "date_hints": "", "clarify": None},
+        {"messages": [("user", "homework in stats?")], "date_hints": "",
+         "date_window": None, "clarify": None},
         config,
     )
     assert first["messages"][-1].content == "No homework."
 
-    # Second turn names no course; get_assignments(7) must be allowed because
-    # id 7 is still in known_course_ids from the first turn.
     second = agent.invoke(
-        {"messages": [("user", "any quizzes in it?")], "date_hints": "", "clarify": None},
+        {"messages": [("user", "any quizzes in it?")], "date_hints": "",
+         "date_window": None, "clarify": None},
         config,
     )
-    client.list_assignments.assert_called_once_with(7, due_after=None, due_before=None)
     assert second["messages"][-1].content == "No quizzes either."
     assert any(m.type == "human" and "homework" in m.content for m in second["messages"])
 
@@ -222,5 +213,5 @@ def test_ambiguous_course_pauses_then_resumes_with_the_pick():
 
     deps.nicknames.learn.assert_called_once_with("ai", 10)
     tool_msg = next(m for m in resumed["messages"] if m.type == "tool")
-    assert "id 10" in tool_msg.content
+    assert "AI Strategy" in tool_msg.content
     assert resumed["messages"][-1].content == "Here's your AI Strategy work."

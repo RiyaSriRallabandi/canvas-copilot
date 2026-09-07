@@ -1,42 +1,80 @@
 # Canvas Copilot
 
-A local-first AI assistant for [Canvas LMS](https://www.instructure.com/canvas) that answers
-course-logistics questions in plain language — *"What assignments are due today?"*, *"Do I have
-a midterm for Intro to AI?"* — and links you straight to the relevant Canvas page.
+A local-first assistant for [Canvas LMS](https://www.instructure.com/canvas). You
+ask a course-logistics question in plain language and get a direct answer with a
+link to the relevant Canvas page, instead of clicking through several pages
+yourself.
 
-It is a **navigation and convenience tool, not an academic tool.** It finds and summarizes
-information (assignments, due dates, exams, announcements). It will not help complete graded
-work, and refuses requests to do so.
+*"What's due this week?"* · *"Do I have a midterm in Intro to AI?"* ·
+*"How many points is the term paper, and did I submit it?"*
 
-## Principles
+It is a navigation and convenience tool, not an academic one. It looks up and
+summarizes logistics — assignments, due dates, points, submission status, exams.
+It does not help complete graded work and refuses requests to do so.
 
-- **Read-only.** Only `GET` requests to Canvas — it cannot submit, edit, or delete anything.
-- **No solving assignments.** Explicit, adversarially tested refusal boundary.
-- **Local-first AI.** Language-model inference runs on-device via [Ollama](https://ollama.com).
-  No queries, grades, or assignment text are sent to a third-party AI provider — the only
-  external calls are to your own institution's Canvas API.
-- **Human-in-the-loop.** Anything that would leave the app (e.g. a drafted email) is shown to
-  you for review — never sent automatically.
+## How it works
 
-## Status
+- **Read-only.** Every call to Canvas is a `GET`. The client raises rather than
+  send anything else, so the app cannot submit, edit, or delete.
+- **On-device language model.** The agent runs on a small local model
+  (`qwen2.5:3b`) through [Ollama](https://ollama.com). Questions, grades, and
+  assignment text never leave the machine for a third-party AI service — the only
+  outbound calls are to your own institution's Canvas API.
+- **Deterministic where it matters.** A LangGraph state machine surrounds the
+  model. Course resolution, date ranges, and the refuse-graded-work boundary are
+  handled by ordinary Python, not left to the model. The model chooses which
+  tool to call and phrases the final answer; the code does the fragile parts.
+- **Asks instead of guessing.** When a course reference is ambiguous ("my AI
+  class" with two AI courses), the agent pauses and offers a numbered list to
+  pick from.
 
-Early development. **Phase 1** (this milestone set) is a terminal CLI that answers
-structured-data questions (assignments, due dates, calendar events) against a personal Canvas
-access token. RAG over syllabi, reminders, email drafting, and a desktop app come later.
+`docs/architecture.md` describes the pieces in more detail.
 
 ## Requirements
 
-- Python 3.12
-- [uv](https://docs.astral.sh/uv/)
-- [Ollama](https://ollama.com) (added in a later milestone)
-- A Canvas personal access token (added in a later milestone)
+- Python 3.12 and [uv](https://docs.astral.sh/uv/)
+- [Ollama](https://ollama.com) running locally, with `qwen2.5:3b` pulled
+- A Canvas personal access token (Account → Settings → New Access Token)
 
 ## Setup
 
 ```bash
 uv sync
-uv run canvas-copilot --help
+ollama pull qwen2.5:3b
+
+# Canvas connection: base URL in .env, token in the OS keychain
+cp .env.example .env          # then set CANVAS_BASE_URL, e.g. https://canvas.cmu.edu/api/v1
+uv run canvas-copilot login   # paste the token (stored in the keychain, never a file)
+uv run canvas-copilot whoami  # confirms the token works
 ```
+
+## Use
+
+```bash
+uv run canvas-copilot ask "what assignments do I have due this week?"
+uv run canvas-copilot chat            # interactive session that remembers context
+uv run canvas-copilot courses         # your starred courses
+uv run canvas-copilot nickname add "ml" 12345
+```
+
+Add `--verbose` to `ask` / `chat` to see the tool calls.
+
+## Development
+
+```bash
+make check         # ruff, pyright, pytest — what CI runs
+make check-local   # the above plus live tests (needs Ollama + a token)
+make eval          # the multi-turn scenario eval against a model
+```
+
+CI runs on every push and pull request (`.github/workflows/ci.yml`).
+
+## Scope
+
+This version answers logistics questions from Canvas's structured API. Questions
+that live in the syllabus, course pages, or announcements — grading policies,
+class location, "how much do I need on the final" — need a retrieval layer that
+is planned for the next phase (`docs/phase-2-backlog.md`).
 
 ## License
 

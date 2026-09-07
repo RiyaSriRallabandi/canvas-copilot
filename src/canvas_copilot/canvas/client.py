@@ -8,7 +8,7 @@ Copilot's read-only guarantee.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -20,6 +20,22 @@ _PER_PAGE = 100
 
 class CanvasError(RuntimeError):
     """Raised when the Canvas API returns an error or the client is misconfigured."""
+
+
+class CanvasReader(Protocol):
+    """The read-only surface the agent needs (real client or a test fake)."""
+
+    def list_courses(self, *, enrollment_state: str = ...) -> list[Course]: ...
+    def list_assignments(
+        self,
+        course_id: int,
+        *,
+        due_after: datetime | None = ...,
+        due_before: datetime | None = ...,
+    ) -> list[Assignment]: ...
+    def get_todo(self) -> list[Assignment]: ...
+    def get_upcoming_events(self) -> list[dict]: ...
+    def close(self) -> None: ...
 
 
 class CanvasClient:
@@ -80,8 +96,7 @@ class CanvasClient:
             )
         if response.status_code >= 400:
             raise CanvasError(
-                f"Canvas returned {response.status_code} for {url}: "
-                f"{response.text[:200]}"
+                f"Canvas returned {response.status_code} for {url}: {response.text[:200]}"
             )
         return response
 
@@ -127,9 +142,7 @@ class CanvasClient:
         return {item["id"] for item in raw if "id" in item}
 
     def list_courses(self, *, enrollment_state: str = "active") -> list[Course]:
-        raw = self._get_paginated(
-            "/courses", {"enrollment_state": enrollment_state}
-        )
+        raw = self._get_paginated("/courses", {"enrollment_state": enrollment_state})
         nicknames = {n.course_id: n.nickname for n in self.list_course_nicknames()}
         favorites = self.list_favorite_course_ids()
 
@@ -172,11 +185,7 @@ class CanvasClient:
         raw = self._get_paginated(f"/courses/{course_id}/assignments")
         assignments = [Assignment.model_validate(item) for item in raw]
         if due_after is not None:
-            assignments = [
-                a for a in assignments if a.due_at and a.due_at >= due_after
-            ]
+            assignments = [a for a in assignments if a.due_at and a.due_at >= due_after]
         if due_before is not None:
-            assignments = [
-                a for a in assignments if a.due_at and a.due_at <= due_before
-            ]
+            assignments = [a for a in assignments if a.due_at and a.due_at <= due_before]
         return assignments

@@ -71,7 +71,8 @@ def test_agent_answers_due_today():
         client.close()
 
     answer = next(
-        m.content for m in reversed(result["messages"])
+        m.content
+        for m in reversed(result["messages"])
         if isinstance(m, AIMessage) and m.content
     )
     assert isinstance(answer, str) and answer

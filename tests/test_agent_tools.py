@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +14,19 @@ from canvas_copilot.storage.nicknames import NicknameStore
 
 COURSES = [
     Course(id=1, name="AI Strategy", course_code="94-804", is_favorite=True),
-    Course(id=2, name="Introduction to Artificial Intelligence", course_code="15-780", is_favorite=True),
-    Course(id=3, name="Probability and Statistics", course_code="36-700", nickname="Stats", is_favorite=True),
+    Course(
+        id=2,
+        name="Introduction to Artificial Intelligence",
+        course_code="15-780",
+        is_favorite=True,
+    ),
+    Course(
+        id=3,
+        name="Probability and Statistics",
+        course_code="36-700",
+        nickname="Stats",
+        is_favorite=True,
+    ),
 ]
 
 
@@ -25,7 +36,9 @@ def tools():
     client.list_courses.return_value = COURSES
     cache = MagicMock()
     cache.get_courses.side_effect = lambda fetch, **kw: fetch()
-    deps = AgentDeps(client=client, cache=cache, nicknames=NicknameStore(connect(":memory:")))
+    deps = AgentDeps(
+        client=client, cache=cache, nicknames=NicknameStore(connect(":memory:"))
+    )
     return {t.name: t for t in build_tools(deps)}, client
 
 
@@ -54,7 +67,7 @@ def test_course_assignments_resolves_course_and_formats_links(tools):
         Assignment(
             id=9,
             name="Problem Set 1",
-            due_at=datetime(2026, 9, 12, 3, 59, tzinfo=timezone.utc),
+            due_at=datetime(2026, 9, 12, 3, 59, tzinfo=UTC),
             html_url="https://canvas.cmu.edu/courses/3/assignments/9",
         )
     ]
@@ -88,7 +101,7 @@ def test_get_todo_labels_courses(tools):
             id=5,
             name="Reading",
             course_id=1,
-            due_at=datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc),
+            due_at=datetime(2026, 9, 10, 12, 0, tzinfo=UTC),
             html_url="http://x/5",
         )
     ]
@@ -99,9 +112,9 @@ def test_get_todo_labels_courses(tools):
 def test_get_todo_filters_by_due_window(tools):
     tool_map, client = tools
     client.get_todo.return_value = [
-        Assignment(id=1, name="Past", due_at=datetime(2026, 9, 2, 3, 0, tzinfo=timezone.utc)),
-        Assignment(id=2, name="Today", due_at=datetime(2026, 9, 9, 20, 0, tzinfo=timezone.utc)),
-        Assignment(id=3, name="Later", due_at=datetime(2026, 9, 20, 3, 0, tzinfo=timezone.utc)),
+        Assignment(id=1, name="Past", due_at=datetime(2026, 9, 2, 3, 0, tzinfo=UTC)),
+        Assignment(id=2, name="Today", due_at=datetime(2026, 9, 9, 20, 0, tzinfo=UTC)),
+        Assignment(id=3, name="Later", due_at=datetime(2026, 9, 20, 3, 0, tzinfo=UTC)),
     ]
     out = tool_map["get_todo"].invoke(
         {"due_after": "2026-09-08", "due_before": "2026-09-12"}

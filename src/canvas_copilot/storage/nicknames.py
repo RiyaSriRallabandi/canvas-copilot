@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 Source = str  # "manual" | "learned"  (a phrase -> course mapping; a course may have many)
 
@@ -49,7 +49,7 @@ class NicknameStore:
                     phrase.strip(),
                     course_id,
                     source,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
 

@@ -8,7 +8,7 @@ Assignments, due dates, and events are invented and dated relative to
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from canvas_copilot.canvas.models import Assignment, Course, User
 
@@ -19,17 +19,29 @@ SEED_NICKNAMES = [("strategy", 55274)]
 
 
 def _dt(day: int, month: int = 3, hour: int = 23, minute: int = 59) -> datetime:
-    return datetime(2026, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, month, day, hour, minute, tzinfo=UTC)
 
 
 FAKE_USER = User(id=1, name="Test Student", primary_email="student@example.edu")
 
 FAKE_COURSES = [
-    Course(id=54550, name="2026 Career Academy", course_code="2026 Career Academy", is_favorite=True),
+    Course(
+        id=54550,
+        name="2026 Career Academy",
+        course_code="2026 Career Academy",
+        is_favorite=True,
+    ),
     Course(id=54829, name="Negotiation - C1", course_code="94800-C1", is_favorite=True),
-    Course(id=55115, name="AIM Professional Seminar", course_code="95886-A", is_favorite=True),
+    Course(
+        id=55115, name="AIM Professional Seminar", course_code="95886-A", is_favorite=True
+    ),
     Course(id=55274, name="AI Strategy", course_code="94804", is_favorite=True),
-    Course(id=55751, name="Introduction to Artificial Intelligence", course_code="95891", is_favorite=True),
+    Course(
+        id=55751,
+        name="Introduction to Artificial Intelligence",
+        course_code="95891",
+        is_favorite=True,
+    ),
     Course(
         id=56385,
         name="Making Products Count: Data Science for Product Managers - Fall 2026",
@@ -37,48 +49,112 @@ FAKE_COURSES = [
         is_favorite=True,
     ),
     # A past (non-starred) course.
-    Course(id=54095, name="OPTIONAL Introduction to Python Programming 2026",
-           course_code="OPTIONAL Intro Python 2026", is_favorite=False),
+    Course(
+        id=54095,
+        name="OPTIONAL Introduction to Python Programming 2026",
+        course_code="OPTIONAL Intro Python 2026",
+        is_favorite=False,
+    ),
 ]
 
 _URL = "https://canvas.cmu.edu/courses/{c}/assignments/{a}"
 
 FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
     55274: [  # AI Strategy
-        Assignment(id=1, course_id=55274, name="Company Selection Survey", due_at=_dt(11),
-                   html_url=_URL.format(c=55274, a=1)),
-        Assignment(id=2, course_id=55274, name="Canvas 1 Team Assignment", due_at=_dt(18),
-                   html_url=_URL.format(c=55274, a=2)),
-        Assignment(id=3, course_id=55274, name="Canvas 2 Team Assignment", due_at=_dt(4, month=4),
-                   html_url=_URL.format(c=55274, a=3)),
+        Assignment(
+            id=1,
+            course_id=55274,
+            name="Company Selection Survey",
+            due_at=_dt(11),
+            html_url=_URL.format(c=55274, a=1),
+        ),
+        Assignment(
+            id=2,
+            course_id=55274,
+            name="Canvas 1 Team Assignment",
+            due_at=_dt(18),
+            html_url=_URL.format(c=55274, a=2),
+        ),
+        Assignment(
+            id=3,
+            course_id=55274,
+            name="Canvas 2 Team Assignment",
+            due_at=_dt(4, month=4),
+            html_url=_URL.format(c=55274, a=3),
+        ),
     ],
     55751: [  # Introduction to Artificial Intelligence
-        Assignment(id=4, course_id=55751, name="Worksheet 2", due_at=_dt(13),
-                   html_url=_URL.format(c=55751, a=4)),
-        Assignment(id=5, course_id=55751, name="Lab 5", due_at=_dt(19),
-                   html_url=_URL.format(c=55751, a=5)),
-        Assignment(id=6, course_id=55751, name="Homework 3", due_at=_dt(20),
-                   html_url=_URL.format(c=55751, a=6)),
-        Assignment(id=7, course_id=55751, name="Midterm Exam", due_at=_dt(25),
-                   html_url=_URL.format(c=55751, a=7)),
+        Assignment(
+            id=4,
+            course_id=55751,
+            name="Worksheet 2",
+            due_at=_dt(13),
+            html_url=_URL.format(c=55751, a=4),
+        ),
+        Assignment(
+            id=5,
+            course_id=55751,
+            name="Lab 5",
+            due_at=_dt(19),
+            html_url=_URL.format(c=55751, a=5),
+        ),
+        Assignment(
+            id=6,
+            course_id=55751,
+            name="Homework 3",
+            due_at=_dt(20),
+            html_url=_URL.format(c=55751, a=6),
+        ),
+        Assignment(
+            id=7,
+            course_id=55751,
+            name="Midterm Exam",
+            due_at=_dt(25),
+            html_url=_URL.format(c=55751, a=7),
+        ),
     ],
     56385: [  # Making Products Count
-        Assignment(id=8, course_id=56385, name="Python Proficiency Assessment", due_at=_dt(6),
-                   html_url=_URL.format(c=56385, a=8)),
-        Assignment(id=9, course_id=56385, name="HW 1 - CLV", due_at=_dt(22),
-                   html_url=_URL.format(c=56385, a=9)),
+        Assignment(
+            id=8,
+            course_id=56385,
+            name="Python Proficiency Assessment",
+            due_at=_dt(6),
+            html_url=_URL.format(c=56385, a=8),
+        ),
+        Assignment(
+            id=9,
+            course_id=56385,
+            name="HW 1 - CLV",
+            due_at=_dt(22),
+            html_url=_URL.format(c=56385, a=9),
+        ),
     ],
     54829: [  # Negotiation
-        Assignment(id=10, course_id=54829, name="Negotiation exercise #2", due_at=_dt(17),
-                   html_url=_URL.format(c=54829, a=10)),
-        Assignment(id=12, course_id=54829, name="Pre-class Reading", due_at=_dt(16, hour=17),
-                   html_url=_URL.format(c=54829, a=12)),
+        Assignment(
+            id=10,
+            course_id=54829,
+            name="Negotiation exercise #2",
+            due_at=_dt(17),
+            html_url=_URL.format(c=54829, a=10),
+        ),
+        Assignment(
+            id=12,
+            course_id=54829,
+            name="Pre-class Reading",
+            due_at=_dt(16, hour=17),
+            html_url=_URL.format(c=54829, a=12),
+        ),
     ],
     55115: [],
     54550: [],
     54095: [  # past course
-        Assignment(id=11, course_id=54095, name="Python Basics Quiz", due_at=_dt(15, month=2),
-                   html_url=_URL.format(c=54095, a=11)),
+        Assignment(
+            id=11,
+            course_id=54095,
+            name="Python Basics Quiz",
+            due_at=_dt(15, month=2),
+            html_url=_URL.format(c=54095, a=11),
+        ),
     ],
 }
 

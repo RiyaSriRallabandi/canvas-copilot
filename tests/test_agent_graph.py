@@ -25,7 +25,7 @@ class ScriptedModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "scripted"
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "ScriptedModel":
+    def bind_tools(self, tools: Any, **kwargs: Any) -> ScriptedModel:
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
@@ -53,7 +53,9 @@ def test_agent_calls_tool_then_answers():
     deps, client = _deps()
     model = ScriptedModel(
         responses=[
-            AIMessage(content="", tool_calls=[{"name": "get_todo", "args": {}, "id": "a"}]),
+            AIMessage(
+                content="", tool_calls=[{"name": "get_todo", "args": {}, "id": "a"}]
+            ),
             AIMessage(content="You have **Lab 3** due."),
         ]
     )
@@ -68,7 +70,9 @@ def test_bad_tool_args_are_reported_and_retried():
     deps, client = _deps()
     model = ScriptedModel(
         responses=[
-            AIMessage(content="", tool_calls=[{"name": "nonesuch", "args": {}, "id": "a"}]),
+            AIMessage(
+                content="", tool_calls=[{"name": "nonesuch", "args": {}, "id": "a"}]
+            ),
             AIMessage(content="Sorry, I could not look that up."),
         ]
     )
@@ -108,17 +112,33 @@ def test_explicit_course_phrase_overrides_the_models_guess():
         Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
     ]
     deps, client = _deps(courses)
-    model = ScriptedModel(responses=[
-        AIMessage(content="", id="c1", tool_calls=[
-            {"name": "course_assignments", "args": {"course_query": "AI Strategy"}, "id": "g1"}
-        ]),
-        AIMessage(content="done", id="c2"),
-    ])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "AI Strategy"},
+                        "id": "g1",
+                    }
+                ],
+            ),
+            AIMessage(content="done", id="c2"),
+        ]
+    )
     agent = build_agent(deps, model=model)
-    agent.invoke({
-        "messages": [("user", "what is due in Introduction to Artificial Intelligence?")],
-        "date_hints": "", "date_window": None, "clarify": None,
-    })
+    agent.invoke(
+        {
+            "messages": [
+                ("user", "what is due in Introduction to Artificial Intelligence?")
+            ],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        }
+    )
     # model said "AI Strategy" (10); the student's words win -> course 20
     assert client.list_assignments.call_args.args[0] == 20
 
@@ -131,23 +151,58 @@ def test_pronoun_followup_uses_the_last_resolved_course():
         Course(id=20, name="Introduction to Artificial Intelligence", is_favorite=True),
     ]
     deps, client = _deps(courses)
-    model = ScriptedModel(responses=[
-        AIMessage(content="", id="a1", tool_calls=[
-            {"name": "course_assignments",
-             "args": {"course_query": "Introduction to Artificial Intelligence"}, "id": "g1"}
-        ]),
-        AIMessage(content="ok", id="a2"),
-        AIMessage(content="", id="a3", tool_calls=[
-            {"name": "course_assignments", "args": {"course_query": "AI Strategy"}, "id": "g2"}
-        ]),
-        AIMessage(content="ok2", id="a4"),
-    ])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="a1",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {
+                            "course_query": "Introduction to Artificial Intelligence"
+                        },
+                        "id": "g1",
+                    }
+                ],
+            ),
+            AIMessage(content="ok", id="a2"),
+            AIMessage(
+                content="",
+                id="a3",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "AI Strategy"},
+                        "id": "g2",
+                    }
+                ],
+            ),
+            AIMessage(content="ok2", id="a4"),
+        ]
+    )
     agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "t"}}
-    agent.invoke({"messages": [("user", "assignments in Introduction to Artificial Intelligence?")],
-                  "date_hints": "", "date_window": None, "clarify": None}, config)
-    agent.invoke({"messages": [("user", "does it have a final exam?")],
-                  "date_hints": "", "date_window": None, "clarify": None}, config)
+    agent.invoke(
+        {
+            "messages": [
+                ("user", "assignments in Introduction to Artificial Intelligence?")
+            ],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        },
+        config,
+    )
+    agent.invoke(
+        {
+            "messages": [("user", "does it have a final exam?")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        },
+        config,
+    )
     # "it" -> the last course (20), not the model's "AI Strategy" (10)
     assert client.list_assignments.call_args.args[0] == 20
 
@@ -156,10 +211,14 @@ def test_solve_request_is_refused_before_the_model_runs():
     deps, client = _deps()
     model = ScriptedModel(responses=[AIMessage(content="should not be reached")])
     agent = build_agent(deps, model=model)
-    result = agent.invoke({
-        "messages": [("user", "write the code for my homework for me")],
-        "date_hints": "", "date_window": None, "clarify": None,
-    })
+    result = agent.invoke(
+        {
+            "messages": [("user", "write the code for my homework for me")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        }
+    )
     answer = result["messages"][-1].content
     assert "can't help" in answer.lower()
     client.get_todo.assert_not_called()
@@ -171,20 +230,28 @@ def test_course_assignments_injects_the_date_window():
     model = ScriptedModel(
         responses=[
             AIMessage(
-                content="", id="c1",
-                tool_calls=[{"name": "course_assignments",
-                             "args": {"course_query": "stats"}, "id": "g1"}],
+                content="",
+                id="c1",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "stats"},
+                        "id": "g1",
+                    }
+                ],
             ),
             AIMessage(content="Here you go.", id="c2"),
         ]
     )
     agent = build_agent(deps, model=model)
-    agent.invoke({
-        "messages": [("user", "what's due this week in stats?")],
-        "date_hints": "",
-        "date_window": ("2026-03-16", "2026-03-22"),
-        "clarify": None,
-    })
+    agent.invoke(
+        {
+            "messages": [("user", "what's due this week in stats?")],
+            "date_hints": "",
+            "date_window": ("2026-03-16", "2026-03-22"),
+            "clarify": None,
+        }
+    )
     # the model omitted the dates; the graph injected them
     _, kwargs = client.list_assignments.call_args
     assert kwargs["due_after"].date().isoformat() == "2026-03-16"
@@ -197,15 +264,27 @@ def test_conversation_remembers_the_resolved_course_across_turns():
     model = ScriptedModel(
         responses=[
             AIMessage(
-                content="", id="a1",
-                tool_calls=[{"name": "course_assignments",
-                             "args": {"course_query": "stats"}, "id": "g1"}],
+                content="",
+                id="a1",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "stats"},
+                        "id": "g1",
+                    }
+                ],
             ),
             AIMessage(content="No homework.", id="a2"),
             AIMessage(
-                content="", id="a3",
-                tool_calls=[{"name": "course_assignments",
-                             "args": {"course_query": "stats"}, "id": "g2"}],
+                content="",
+                id="a3",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "stats"},
+                        "id": "g2",
+                    }
+                ],
             ),
             AIMessage(content="No quizzes either.", id="a4"),
         ]
@@ -214,15 +293,23 @@ def test_conversation_remembers_the_resolved_course_across_turns():
     config = {"configurable": {"thread_id": "chat-1"}}
 
     first = agent.invoke(
-        {"messages": [("user", "homework in stats?")], "date_hints": "",
-         "date_window": None, "clarify": None},
+        {
+            "messages": [("user", "homework in stats?")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        },
         config,
     )
     assert first["messages"][-1].content == "No homework."
 
     second = agent.invoke(
-        {"messages": [("user", "any quizzes in it?")], "date_hints": "",
-         "date_window": None, "clarify": None},
+        {
+            "messages": [("user", "any quizzes in it?")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        },
         config,
     )
     assert second["messages"][-1].content == "No quizzes either."
@@ -243,8 +330,13 @@ def test_ambiguous_course_pauses_then_resumes_with_the_pick():
             AIMessage(
                 content="",
                 id="c1",
-                tool_calls=[{"name": "course_assignments",
-                             "args": {"course_query": "AI Strategy"}, "id": "r1"}],
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {"course_query": "AI Strategy"},
+                        "id": "r1",
+                    }
+                ],
             ),
             AIMessage(content="Here's your AI class work.", id="c2"),
         ]
@@ -255,8 +347,12 @@ def test_ambiguous_course_pauses_then_resumes_with_the_pick():
     # The model narrowed "my AI class" to "AI Strategy"; the graph re-checks the
     # student's own words and clarifies anyway.
     paused = agent.invoke(
-        {"messages": [("user", "do I have work in my AI class?")],
-         "date_hints": "", "date_window": None, "clarify": None},
+        {
+            "messages": [("user", "do I have work in my AI class?")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+        },
         config,
     )
     interrupt_value = paused["__interrupt__"][0].value

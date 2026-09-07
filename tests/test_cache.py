@@ -55,7 +55,13 @@ def test_force_bypasses_cache():
 def test_round_trips_canvas_nickname_and_favorite_flag():
     cache = CourseCache(connect(":memory:"))
     courses = [
-        Course(id=3, name="Statistics", course_code="36-700", nickname="Stats", is_favorite=True),
+        Course(
+            id=3,
+            name="Statistics",
+            course_code="36-700",
+            nickname="Stats",
+            is_favorite=True,
+        ),
         Course(id=4, name="Old Course", is_favorite=False),
     ]
     result = {c.id: c for c in cache.get_courses(lambda: courses)}

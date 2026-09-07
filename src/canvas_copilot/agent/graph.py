@@ -34,6 +34,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
+from canvas_copilot.agent._util import message_text
 from canvas_copilot.agent.guardrails import REFUSAL, is_solve_request
 from canvas_copilot.agent.tools import (
     AgentDeps,
@@ -46,11 +47,8 @@ from canvas_copilot.resolve import normalize as _normalize
 
 MAX_TOOL_TURNS = 4
 
-
-class Clarification(TypedDict):
-    tool_call_id: str
-    query: str
-    options: list[dict[str, Any]]  # [{"id": int, "label": str}]
+# {tool_call_id, query, options: [{id, label, name}]}
+Clarification = dict[str, Any]
 
 
 class AgentState(TypedDict):
@@ -74,7 +72,9 @@ _COURSE_PHRASE = re.compile(
     re.IGNORECASE,
 )
 # A follow-up referring back to a course already discussed.
-_PRONOUN_REF = re.compile(r"\b(it|that class|that course|the same( one)?|this class)\b", re.I)
+_PRONOUN_REF = re.compile(
+    r"\b(it|that class|that course|the same( one)?|this class)\b", re.I
+)
 
 
 def _course_phrase(text: str) -> str | None:
@@ -96,7 +96,7 @@ def _refers_back(text: str) -> bool:
 def _last_human_text(messages: list[AnyMessage]) -> str:
     for message in reversed(messages):
         if isinstance(message, HumanMessage):
-            return message.content
+            return message_text(message)
     return ""
 
 
@@ -146,7 +146,7 @@ def build_agent(
 
     def route_start(state: AgentState) -> str:
         last = state["messages"][-1]
-        if isinstance(last, HumanMessage) and is_solve_request(last.content):
+        if isinstance(last, HumanMessage) and is_solve_request(message_text(last)):
             return "refuse"
         return "agent"
 
@@ -162,6 +162,7 @@ def build_agent(
 
     def run_tools(state: AgentState) -> dict:
         last = state["messages"][-1]
+        assert isinstance(last, AIMessage)  # route_agent only sends us here then
         window = state.get("date_window")
         student_text = _last_human_text(state["messages"])
         phrase = _course_phrase(student_text)
@@ -170,10 +171,12 @@ def build_agent(
         for call in last.tool_calls:
             tool = tools_by_name.get(call["name"])
             if tool is None:
-                results.append(ToolMessage(
-                    content=f"ERROR: no tool named {call['name']!r}.",
-                    tool_call_id=call["id"],
-                ))
+                results.append(
+                    ToolMessage(
+                        content=f"ERROR: no tool named {call['name']!r}.",
+                        tool_call_id=call["id"],
+                    )
+                )
                 continue
 
             args = dict(call["args"])
@@ -181,7 +184,9 @@ def build_agent(
             # The student's own words are authoritative for which course. The
             # model tends to narrow ("my AI class" -> "AI Strategy") or guess.
             if call["name"] in _COURSE_TOOLS:
-                arg_key = "course_query" if call["name"] == "course_assignments" else "query"
+                arg_key = (
+                    "course_query" if call["name"] == "course_assignments" else "query"
+                )
                 if phrase is not None:
                     check = deps.resolve(phrase)
                     if check.status == "ambiguous":
@@ -189,8 +194,11 @@ def build_agent(
                             "tool_call_id": call["id"],
                             "query": phrase,
                             "options": [
-                                {"id": c.id, "label": course_label(c),
-                                 "name": c.nickname or c.name}
+                                {
+                                    "id": c.id,
+                                    "label": course_label(c),
+                                    "name": c.nickname or c.name,
+                                }
                                 for c in check.candidates
                             ],
                         }
@@ -215,8 +223,11 @@ def build_agent(
                     "tool_call_id": call["id"],
                     "query": need.query,
                     "options": [
-                        {"id": c.id, "label": course_label(c),
-                         "name": c.nickname or c.name}
+                        {
+                            "id": c.id,
+                            "label": course_label(c),
+                            "name": c.nickname or c.name,
+                        }
                         for c in need.candidates
                     ],
                 }
@@ -230,8 +241,7 @@ def build_agent(
         pending = state["clarify"]
         assert pending is not None
         option_lines = "\n".join(
-            f"  {i}. {opt['label']}"
-            for i, opt in enumerate(pending["options"], start=1)
+            f"  {i}. {opt['label']}" for i, opt in enumerate(pending["options"], start=1)
         )
         picked_id = interrupt(
             {
@@ -241,12 +251,10 @@ def build_agent(
                 "options": pending["options"],
             }
         )
-        chosen = next(
-            (o for o in pending["options"] if o["id"] == picked_id), None
-        )
+        chosen = next((o for o in pending["options"] if o["id"] == picked_id), None)
         if chosen is None:
             message = ToolMessage(
-                content=f'NOT_FOUND: the student did not pick a course for '
+                content=f"NOT_FOUND: the student did not pick a course for "
                 f'"{pending["query"]}".',
                 tool_call_id=pending["tool_call_id"],
             )
@@ -278,9 +286,7 @@ def build_agent(
         last = state["messages"][-1]
         if isinstance(last, AIMessage) and last.tool_calls:
             return (
-                "tools"
-                if _tool_turns(state["messages"]) < MAX_TOOL_TURNS
-                else "finalize"
+                "tools" if _tool_turns(state["messages"]) < MAX_TOOL_TURNS else "finalize"
             )
         return END
 

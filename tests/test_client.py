@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import httpx
 import pytest
 
@@ -42,9 +44,8 @@ def test_read_only_enforcement_blocks_non_get():
     def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
         raise AssertionError("no request should be sent for a blocked verb")
 
-    with make_client(handler) as client:
-        with pytest.raises(CanvasError, match="read-only"):
-            client._request("POST", "/courses")
+    with make_client(handler) as client, pytest.raises(CanvasError, match="read-only"):
+        client._request("POST", "/courses")
 
 
 def test_pagination_follows_link_header():
@@ -57,9 +58,7 @@ def test_pagination_follows_link_header():
         return httpx.Response(
             200,
             json=[{"course_id": 1, "nickname": "A"}],
-            headers={
-                "Link": f'<{BASE}/users/self/course_nicknames?page=2>; rel="next"'
-            },
+            headers={"Link": f'<{BASE}/users/self/course_nicknames?page=2>; rel="next"'},
         )
 
     with make_client(handler) as client:
@@ -73,18 +72,16 @@ def test_401_gives_actionable_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"errors": [{"message": "Invalid token"}]})
 
-    with make_client(handler) as client:
-        with pytest.raises(CanvasError, match="login"):
-            client.get_current_user()
+    with make_client(handler) as client, pytest.raises(CanvasError, match="login"):
+        client.get_current_user()
 
 
 def test_403_mentions_rate_limit():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, text="Rate Limit Exceeded")
 
-    with make_client(handler) as client:
-        with pytest.raises(CanvasError, match="rate"):
-            client.get_current_user()
+    with make_client(handler) as client, pytest.raises(CanvasError, match="rate"):
+        client.get_current_user()
 
 
 def _course_list_handler(courses, nicknames=None, favorites=None):
@@ -143,13 +140,13 @@ def test_list_assignments_filters_by_due_window():
             ],
         )
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     with make_client(handler) as client:
         due = client.list_assignments(
             99,
-            due_after=datetime(2026, 9, 5, tzinfo=timezone.utc),
-            due_before=datetime(2026, 9, 15, tzinfo=timezone.utc),
+            due_after=datetime(2026, 9, 5, tzinfo=UTC),
+            due_before=datetime(2026, 9, 15, tzinfo=UTC),
         )
 
     assert [a.id for a in due] == [2]

@@ -23,15 +23,27 @@ if TYPE_CHECKING:
     from canvas_copilot.storage.nicknames import NicknameStore
 
 _FILLER = {
-    "my", "the", "a", "an", "class", "course", "section",
-    "for", "in", "of", "to", "on", "with", "please",
+    "my",
+    "the",
+    "a",
+    "an",
+    "class",
+    "course",
+    "section",
+    "for",
+    "in",
+    "of",
+    "to",
+    "on",
+    "with",
+    "please",
 }
 
 # Fuzzy-match bands (0-100).
-_AUTO_RESOLVE = 90   # a single match must beat this to resolve without asking
-_GAP = 15            # ...and lead the runner-up by at least this much
+_AUTO_RESOLVE = 90  # a single match must beat this to resolve without asking
+_GAP = 15  # ...and lead the runner-up by at least this much
 _CONSIDER_FLOOR = 60  # below this, a course isn't a plausible match at all
-_CLUSTER = 12        # matches within this of the top are "too close to call"
+_CLUSTER = 12  # matches within this of the top are "too close to call"
 
 Status = Literal["resolved", "confirm", "ambiguous", "not_found"]
 
@@ -152,9 +164,7 @@ def _resolve_within(
             course = by_id[entry.course_id]
             stale = entry.source == "learned" and not course.is_favorite
             if not stale:
-                return Resolution(
-                    "resolved", query, course=course, reason="nickname"
-                )
+                return Resolution("resolved", query, course=course, reason="nickname")
 
     # 2. exact match on a word, acronym, code, or full name
     q_alnum = _alnum(query)

@@ -1,7 +1,7 @@
 """Round-2 model bake-off: multi-turn scenarios against the real agent.
 
-    uv run python -m canvas_copilot.evals.bakeoff
-    uv run python -m canvas_copilot.evals.bakeoff --model qwen2.5:3b --runs 2
+uv run python -m canvas_copilot.evals.bakeoff
+uv run python -m canvas_copilot.evals.bakeoff --model qwen2.5:3b --runs 2
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 from langchain_core.messages import AIMessage
 
+from canvas_copilot.agent._util import message_text
 from canvas_copilot.evals.harness import build_eval_agent, run_scenario
 from canvas_copilot.evals.scenarios import (
     Scenario,
@@ -39,12 +40,13 @@ def _preflight(models: list[str]) -> dict[str, int]:
     try:
         available = _ollama_models()
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(f"Cannot reach Ollama at {_OLLAMA} ({exc}). Start `ollama serve`.")
+        raise SystemExit(
+            f"Cannot reach Ollama at {_OLLAMA} ({exc}). Start `ollama serve`."
+        ) from exc
     missing = [m for m in models if m not in available]
     if missing:
         raise SystemExit(
-            "Models not pulled:\n  "
-            + "\n  ".join(f"ollama pull {m}" for m in missing)
+            "Models not pulled:\n  " + "\n  ".join(f"ollama pull {m}" for m in missing)
         )
     return available
 
@@ -71,16 +73,22 @@ def _run_model(model_name: str, scenarios: list[Scenario], runs: int) -> dict:
             for tr in transcripts:
                 checks = score_turn(tr.turn, tr.messages)
                 answer = next(
-                    (m.content for m in reversed(tr.messages)
-                     if isinstance(m, AIMessage) and m.content),
+                    (
+                        message_text(m)
+                        for m in reversed(tr.messages)
+                        if isinstance(m, AIMessage) and message_text(m)
+                    ),
                     "",
                 )
                 checks += universal_checks(answer)
                 for c in checks:
                     bucket = (
-                        "refusal" if "refused" in c.label
-                        else "tool" if "tool" in c.label.lower() or "called" in c.label
-                        else "answer" if "answer" in c.label
+                        "refusal"
+                        if "refused" in c.label
+                        else "tool"
+                        if "tool" in c.label.lower() or "called" in c.label
+                        else "answer"
+                        if "answer" in c.label
                         else "other"
                     )
                     check_totals[bucket][1] += 1
@@ -95,7 +103,9 @@ def _run_model(model_name: str, scenarios: list[Scenario], runs: int) -> dict:
     def rate(pair: list[int]) -> float | None:
         return round(pair[0] / pair[1], 3) if pair[1] else None
 
-    per_scenario = {sid: round(statistics.mean(v), 3) for sid, v in scenario_scores.items()}
+    per_scenario = {
+        sid: round(statistics.mean(v), 3) for sid, v in scenario_scores.items()
+    }
     return {
         "overall": round(statistics.mean(per_scenario.values()), 3),
         "tool_checks": rate(check_totals["tool"]),
@@ -103,8 +113,11 @@ def _run_model(model_name: str, scenarios: list[Scenario], runs: int) -> dict:
         "refusal_checks": rate(check_totals["refusal"]),
         "latency_p50_s": round(statistics.median(latencies), 1) if latencies else None,
         "latency_p95_s": (
-            round(sorted(latencies)[min(len(latencies) - 1, int(len(latencies) * 0.95))], 1)
-            if latencies else None
+            round(
+                sorted(latencies)[min(len(latencies) - 1, int(len(latencies) * 0.95))], 1
+            )
+            if latencies
+            else None
         ),
         "per_scenario": per_scenario,
         "sample_failures": failures[:40],
@@ -134,16 +147,22 @@ def main(argv: list[str] | None = None) -> None:
         summary = _run_model(name, scenarios, args.runs)
         summary["size_gb"] = round(sizes.get(name, 0) / 1e9, 2)
         report["models"][name] = summary
-        print(f"  overall {summary['overall']}  tools {summary['tool_checks']}  "
-              f"answers {summary['answer_checks']}  refusal {summary['refusal_checks']}  "
-              f"p50 {summary['latency_p50_s']}s")
+        print(
+            f"  overall {summary['overall']}  tools {summary['tool_checks']}  "
+            f"answers {summary['answer_checks']}  refusal {summary['refusal_checks']}  "
+            f"p50 {summary['latency_p50_s']}s"
+        )
 
-    print(f"\n{'model':16}{'overall':>9}{'tools':>8}{'answers':>9}{'refusal':>9}"
-          f"{'p50 s':>8}{'GB':>7}")
+    print(
+        f"\n{'model':16}{'overall':>9}{'tools':>8}{'answers':>9}{'refusal':>9}"
+        f"{'p50 s':>8}{'GB':>7}"
+    )
     for name, s in report["models"].items():
-        print(f"{name:16}{s['overall']!s:>9}{s['tool_checks']!s:>8}"
-              f"{s['answer_checks']!s:>9}{s['refusal_checks']!s:>9}"
-              f"{s['latency_p50_s']!s:>8}{s['size_gb']!s:>7}")
+        print(
+            f"{name:16}{s['overall']!s:>9}{s['tool_checks']!s:>8}"
+            f"{s['answer_checks']!s:>9}{s['refusal_checks']!s:>9}"
+            f"{s['latency_p50_s']!s:>8}{s['size_gb']!s:>7}"
+        )
 
     args.report_dir.mkdir(parents=True, exist_ok=True)
     path = args.report_dir / f"bakeoff2_{datetime.now():%Y%m%d_%H%M%S}.json"

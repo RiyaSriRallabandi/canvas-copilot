@@ -67,7 +67,9 @@ def test_acronym_resolves_to_single_course():
 def test_acronym_shared_by_two_courses_is_ambiguous():
     courses = [
         Course(id=1, name="AI Strategy", course_code="94-804"),
-        Course(id=2, name="Introduction to Artificial Intelligence", course_code="15-780"),
+        Course(
+            id=2, name="Introduction to Artificial Intelligence", course_code="15-780"
+        ),
         Course(id=3, name="Organic Chemistry", course_code="09-105"),
     ]
     result = resolve_course("ai", courses)
@@ -89,7 +91,9 @@ def test_starred_courses_are_searched_first():
 def test_past_course_match_is_a_confirm():
     courses = [
         Course(id=1, name="Probability and Statistics", is_favorite=True),
-        Course(id=2, name="Introduction to Java", course_code="15-121", is_favorite=False),
+        Course(
+            id=2, name="Introduction to Java", course_code="15-121", is_favorite=False
+        ),
     ]
     result = resolve_course("java", courses)
     assert result.status == "confirm"
@@ -100,7 +104,9 @@ def test_past_course_match_is_a_confirm():
 def test_search_all_includes_past_courses_directly():
     courses = [
         Course(id=1, name="Probability and Statistics", is_favorite=True),
-        Course(id=2, name="Introduction to Java", course_code="15-121", is_favorite=False),
+        Course(
+            id=2, name="Introduction to Java", course_code="15-121", is_favorite=False
+        ),
     ]
     result = resolve_course("java", courses, search_all=True)
     assert result.status == "resolved"

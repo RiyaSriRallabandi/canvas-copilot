@@ -74,7 +74,7 @@ def whoami() -> None:
             user = client.get_current_user()
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     typer.echo(f"{user.name} (id {user.id})")
     if user.primary_email:
         typer.echo(user.primary_email)
@@ -91,7 +91,7 @@ def courses(
         course_list = _cached_courses()
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     if not course_list:
         typer.echo("No active courses found.")
         return
@@ -113,7 +113,7 @@ def refresh() -> None:
         course_list = cache.get_courses(_fetch_courses, force=True)
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     typer.echo(f"Cached {len(course_list)} course(s).")
 
     pruned = nicknames.prune_learned({c.id for c in course_list})
@@ -137,7 +137,7 @@ def resolve(
         course_list = cache.get_courses(_fetch_courses)
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     result = resolve_course(query, course_list, nicknames, search_all=all_courses)
     _print_resolution(result, course_list)
@@ -168,7 +168,7 @@ def nickname_add(phrase: str, course_id: int) -> None:
         course_list = _cached_courses()
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     if course_id not in {c.id for c in course_list}:
         typer.echo(
             f"No cached course with id {course_id}. Run `canvas-copilot courses` first."
@@ -189,7 +189,7 @@ def nickname_list() -> None:
         return
     for entry in entries:
         typer.echo(
-            f'{entry.display_phrase!r} -> course {entry.course_id}  ({entry.source})'
+            f"{entry.display_phrase!r} -> course {entry.course_id}  ({entry.source})"
         )
 
 
@@ -222,6 +222,8 @@ def _build_session_agent():
 def _echo_tools(messages: list, seen: set) -> None:
     from langchain_core.messages import ToolMessage
 
+    from canvas_copilot.agent._util import message_text
+
     for message in messages:
         key = id(message)
         if key in seen:
@@ -229,8 +231,10 @@ def _echo_tools(messages: list, seen: set) -> None:
         seen.add(key)
         for call in getattr(message, "tool_calls", None) or []:
             typer.echo(f"  → {call['name']}({call['args']})", err=True)
-        if isinstance(message, ToolMessage) and message.content:
-            typer.echo(f"  ← {message.content.splitlines()[0]}", err=True)
+        if isinstance(message, ToolMessage):
+            text = message_text(message)
+            if text:
+                typer.echo(f"  ← {text.splitlines()[0]}", err=True)
 
 
 def _converse(agent, config, question: str, *, verbose: bool) -> str:
@@ -240,6 +244,7 @@ def _converse(agent, config, question: str, *, verbose: bool) -> str:
     from langchain_core.messages import AIMessage, HumanMessage
     from langgraph.types import Command
 
+    from canvas_copilot.agent._util import message_text
     from canvas_copilot.agent.dates import hints_for, primary_window
 
     seen: set = set()
@@ -273,9 +278,9 @@ def _converse(agent, config, question: str, *, verbose: bool) -> str:
         typer.echo("", err=True)
     return next(
         (
-            m.content
+            message_text(m)
             for m in reversed(state["messages"])
-            if isinstance(m, AIMessage) and m.content
+            if isinstance(m, AIMessage) and message_text(m)
         ),
         "(no answer)",
     )
@@ -297,7 +302,7 @@ def ask(
         typer.echo(_converse(agent, config, question, verbose=verbose))
     except CanvasError as exc:
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     finally:
         client.close()
 

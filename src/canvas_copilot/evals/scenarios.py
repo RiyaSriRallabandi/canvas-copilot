@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from langchain_core.messages import AIMessage
 
-from langchain_core.messages import AIMessage, ToolMessage
+from canvas_copilot.agent._util import message_text
 
 _DIR = Path(__file__).parent / "cases"
 
@@ -21,13 +22,15 @@ _DIR = Path(__file__).parent / "cases"
 @dataclass(frozen=True)
 class Turn:
     user: str
-    tools_called: tuple[str, ...] = ()          # required, as an ordered subsequence
+    tools_called: tuple[str, ...] = ()  # required, as an ordered subsequence
     tools_not_called: tuple[str, ...] = ()
-    tool_args: dict[str, dict[str, str]] = field(default_factory=dict)  # tool -> {arg_contains}
+    tool_args: dict[str, dict[str, str]] = field(
+        default_factory=dict
+    )  # tool -> {arg_contains}
     answer_contains: tuple[str, ...] = ()
     answer_excludes: tuple[str, ...] = ()
     refused: bool = False
-    pick: int | None = None                     # option id to choose if asked to clarify
+    pick: int | None = None  # option id to choose if asked to clarify
 
 
 @dataclass(frozen=True)
@@ -91,32 +94,47 @@ def score_turn(turn: Turn, turn_messages: list) -> list[CheckResult]:
     ]
     called_names = [c["name"] for c in tool_calls]
     answer = next(
-        (m.content for m in reversed(turn_messages)
-         if isinstance(m, AIMessage) and m.content),
+        (
+            message_text(m)
+            for m in reversed(turn_messages)
+            if isinstance(m, AIMessage) and message_text(m)
+        ),
         "",
     )
     results: list[CheckResult] = []
 
     if turn.refused:
-        results.append(CheckResult(
-            "refused: no tools called", not tool_calls,
-            f"called {called_names}" if tool_calls else "",
-        ))
-        results.append(CheckResult(
-            "refused: gave a response", bool(answer.strip()),
-        ))
+        results.append(
+            CheckResult(
+                "refused: no tools called",
+                not tool_calls,
+                f"called {called_names}" if tool_calls else "",
+            )
+        )
+        results.append(
+            CheckResult(
+                "refused: gave a response",
+                bool(answer.strip()),
+            )
+        )
 
     if turn.tools_called:
         ok = _is_subsequence(list(turn.tools_called), called_names)
-        results.append(CheckResult(
-            f"tools called in order: {list(turn.tools_called)}", ok,
-            f"got {called_names}",
-        ))
+        results.append(
+            CheckResult(
+                f"tools called in order: {list(turn.tools_called)}",
+                ok,
+                f"got {called_names}",
+            )
+        )
 
     for name in turn.tools_not_called:
-        results.append(CheckResult(
-            f"tool NOT called: {name}", name not in called_names,
-        ))
+        results.append(
+            CheckResult(
+                f"tool NOT called: {name}",
+                name not in called_names,
+            )
+        )
 
     for tool_name, arg_checks in turn.tool_args.items():
         matching = [c for c in tool_calls if c["name"] == tool_name]
@@ -124,20 +142,28 @@ def score_turn(turn: Turn, turn_messages: list) -> list[CheckResult]:
         blob = " ".join(
             str(v) for c in matching for v in (c.get("args") or {}).values()
         ).lower()
-        results.append(CheckResult(
-            f"{tool_name} arg contains {needle!r}",
-            bool(matching) and needle.lower() in blob,
-            f"args seen: {[c.get('args') for c in matching]}",
-        ))
+        results.append(
+            CheckResult(
+                f"{tool_name} arg contains {needle!r}",
+                bool(matching) and needle.lower() in blob,
+                f"args seen: {[c.get('args') for c in matching]}",
+            )
+        )
 
     for text in turn.answer_contains:
-        results.append(CheckResult(
-            f"answer contains {text!r}", text.lower() in answer.lower(),
-        ))
+        results.append(
+            CheckResult(
+                f"answer contains {text!r}",
+                text.lower() in answer.lower(),
+            )
+        )
     for text in turn.answer_excludes:
-        results.append(CheckResult(
-            f"answer excludes {text!r}", text.lower() not in answer.lower(),
-        ))
+        results.append(
+            CheckResult(
+                f"answer excludes {text!r}",
+                text.lower() not in answer.lower(),
+            )
+        )
 
     if not results:  # a turn with no explicit checks still must produce an answer
         results.append(CheckResult("produced an answer", bool(answer.strip())))
@@ -151,6 +177,7 @@ def universal_checks(answer: str) -> list[CheckResult]:
     """Checks applied to every turn's answer regardless of scenario."""
     return [
         CheckResult(
-            "no placeholder text", not _PLACEHOLDER.search(answer or ""),
+            "no placeholder text",
+            not _PLACEHOLDER.search(answer or ""),
         )
     ]

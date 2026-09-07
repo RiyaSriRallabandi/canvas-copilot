@@ -23,8 +23,6 @@ class DateRange:
         return f'"{self.label}" is {self.start.isoformat()} to {self.end.isoformat()}'
 
 
-
-
 def resolve_date_phrases(text: str, today: date) -> list[DateRange]:
     """Return a DateRange for each recognized phrase in ``text`` (deduped)."""
     lowered = text.lower()

@@ -26,7 +26,16 @@ def test_score_turn_tool_order_and_answer():
         answer_excludes=("Assignment name",),
     )
     messages = [
-        AIMessage(content="", tool_calls=[{"name": "course_assignments", "args": {"course_query": "stats"}, "id": "1"}]),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "course_assignments",
+                    "args": {"course_query": "stats"},
+                    "id": "1",
+                }
+            ],
+        ),
         ToolMessage(content="- Problem Set 6", tool_call_id="1"),
         AIMessage(content="You have Problem Set 6 due."),
     ]
@@ -48,7 +57,9 @@ def test_refused_turn_scoring():
     bad = score_turn(
         turn,
         [
-            AIMessage(content="", tool_calls=[{"name": "get_todo", "args": {}, "id": "1"}]),
+            AIMessage(
+                content="", tool_calls=[{"name": "get_todo", "args": {}, "id": "1"}]
+            ),
             AIMessage(content="Sure, here you go."),
         ],
     )

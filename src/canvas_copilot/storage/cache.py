@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from canvas_copilot.canvas.models import Course
 
@@ -50,7 +50,7 @@ class CourseCache:
         synced = self.synced_at()
         if synced is None:
             return True
-        return datetime.now(timezone.utc) - synced > max_age
+        return datetime.now(UTC) - synced > max_age
 
     def _store(self, courses: list[Course]) -> None:
         with self._conn:
@@ -67,7 +67,7 @@ class CourseCache:
             self._conn.execute(
                 "INSERT INTO meta (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (_SYNCED_AT_KEY, datetime.now(timezone.utc).isoformat()),
+                (_SYNCED_AT_KEY, datetime.now(UTC).isoformat()),
             )
 
     def _load(self) -> list[Course]:

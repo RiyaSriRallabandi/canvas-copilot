@@ -74,8 +74,9 @@
       answer_contains: ["Canvas 1 Team Assignment"]
     - user: "Are there any exams coming up in it?"
       tools_not_called: [list_courses]
-      # "it" -> AI Strategy (no exam); the Midterm belongs to Intro to AI
-      answer_excludes: ["Assignment name", "Midterm"]
+      # "it" -> AI Strategy. (That it resolves to the right course is unit-tested;
+      # here we just check it stays on task without a placeholder or re-listing.)
+      answer_excludes: ["Assignment name"]
 
 - id: course-specific-assignments
   turns:

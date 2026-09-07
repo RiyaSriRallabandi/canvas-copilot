@@ -12,7 +12,7 @@ from datetime import date, datetime, time
 
 from langchain_core.tools import BaseTool, tool
 
-from canvas_copilot.canvas.client import CanvasClient
+from canvas_copilot.canvas.client import CanvasReader
 from canvas_copilot.canvas.models import Assignment, Course
 from canvas_copilot.resolve import Resolution, normalize
 from canvas_copilot.resolve import resolve_course as resolve_course_fn
@@ -34,7 +34,7 @@ class NeedsClarification(Exception):
 
 @dataclass
 class AgentDeps:
-    client: CanvasClient
+    client: CanvasReader
     cache: CourseCache
     nicknames: NicknameStore
     # Course picks made during THIS session (normalized phrase -> course id).
@@ -91,10 +91,14 @@ def _parse_iso(value: str | None, *, end_of_day: bool = False) -> datetime | Non
 def _fmt_due(assignment: Assignment) -> str:
     if assignment.due_at is None:
         return "no due date"
-    return assignment.due_at.astimezone().strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
+    return (
+        assignment.due_at.astimezone().strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
+    )
 
 
-def _fmt_assignments(items: list[Assignment], course_label: dict[int, str] | None = None) -> str:
+def _fmt_assignments(
+    items: list[Assignment], course_label: dict[int, str] | None = None
+) -> str:
     if not items:
         return "No assignments found."
     lines = []
@@ -195,9 +199,7 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
             when_text = ""
             if when:
                 try:
-                    when_text = (
-                        f" — {datetime.fromisoformat(when).astimezone():%a %b %d, %I:%M %p}"
-                    )
+                    when_text = f" — {datetime.fromisoformat(when).astimezone():%a %b %d, %I:%M %p}"
                 except ValueError:
                     when_text = ""
             context = event.get("context_name")

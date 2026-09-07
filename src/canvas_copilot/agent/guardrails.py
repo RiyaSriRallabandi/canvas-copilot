@@ -10,8 +10,13 @@ from __future__ import annotations
 
 import re
 
-_WORK = r"(assignment|homework|hw|problem\s*set|pset|worksheet|lab|quiz|exam|midterm|final|essay|paper|question|exercise|project)"
-_DO = r"(do|write|solve|complete|finish|answer|code|implement|derive|compute|calculate)"
+_WORK = (
+    r"(assignment|homework|hw|problem\s*set|pset|worksheet|lab|quiz|exam|midterm"
+    r"|final|essay|paper|question|exercise|project|discussion(\s*post)?|response"
+    r"|reflection)"
+)
+# "do" only counts as an imperative here — not the auxiliary in "where do I ...".
+_DO = r"((?:do(?!\s+(?:i|you|we|they)\b))|write(\s*up)?|solve|complete|finish|answer|code|implement|derive|compute|calculate)"
 
 _PATTERNS = [
     # "do / write / solve my homework", "complete this assignment for me"

@@ -6,7 +6,13 @@ from unittest.mock import MagicMock
 
 from fpdf import FPDF
 
-from canvas_copilot.canvas.models import Announcement, Assignment, Page
+from canvas_copilot.canvas.models import (
+    Announcement,
+    Assignment,
+    Module,
+    ModuleItem,
+    Page,
+)
 from canvas_copilot.content.chunk import chunk_text
 from canvas_copilot.content.clean import html_to_text, pdf_to_text
 from canvas_copilot.content.ingest import _find_syllabus_pdf, ingest_course
@@ -100,6 +106,23 @@ def test_ingest_course_pulls_every_source():
     client.get_page.return_value = Page(
         url="week-1", title="Week 1", body="<p>Read chapter 2.</p>"
     )
+    client.get_front_page.return_value = Page(
+        url="home",
+        title="Home",
+        body="<p>Welcome. Class meets MWF.</p>",
+        html_url="http://p/home",
+    )
+    client.list_modules.return_value = [
+        Module(
+            id=3,
+            name="Week 3: Neural Networks",
+            html_url="http://m/3",
+            items=[
+                ModuleItem(title="Backprop reading", type="Page"),
+                ModuleItem(title="HW 3", type="Assignment"),
+            ],
+        )
+    ]
     client.list_announcements.return_value = [
         Announcement(
             id=1,
@@ -121,13 +144,18 @@ def test_ingest_course_pulls_every_source():
     result = ingest_course(client, 7, store)
 
     assert result.counts["syllabus"] >= 2  # text field + PDF
-    assert result.counts["page"] == 1
+    assert result.counts["page"] == 2  # front page + Week 1
+    assert result.counts["module"] == 1
     assert result.counts["announcement"] == 1
     assert result.counts["assignment"] == 1
 
     stored = store.chunks_for(7)
     assert any("LockDown Browser" in c.text for c in stored)
     assert any("GHC 4401" in c.text for c in stored)
+    assert any("Class meets MWF" in c.text for c in stored)
+    module_chunk = next(c for c in stored if c.source_type == "module")
+    assert "Neural Networks" in module_chunk.text and "HW 3" in module_chunk.text
+    assert module_chunk.source_url == "http://m/3"
     assert store.indexed_at(7) is not None
 
 
@@ -136,6 +164,8 @@ def test_ingest_course_replaces_previous_chunks():
     client.get_syllabus.return_value = "<p>first version</p>"
     client.list_files.return_value = []
     client.list_pages.return_value = []
+    client.get_front_page.return_value = None
+    client.list_modules.return_value = []
     client.list_announcements.return_value = []
     client.list_assignments.return_value = []
     store = ContentStore(connect(":memory:"))

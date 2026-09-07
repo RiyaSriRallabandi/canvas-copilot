@@ -34,6 +34,18 @@ syllabus, Pages, modules, and announcement text.
 - Is Lockdown Browser required? → recommend setup + link (scan announcements/assignment text)
 - How do I contact my TA? (People / syllabus)
 
+## Ingestion coverage and gaps
+
+Covered: the syllabus text field, a syllabus PDF attached to the course, Canvas
+pages, the course home page, module names with their item titles, announcements,
+and assignment descriptions. Courses vary a lot in structure, so ingestion skips
+any disabled tab without failing.
+
+Not covered: a syllabus that is an external link (a Google Doc, a course
+website). Canvas only returns the link, not its contents. Also not covered:
+Canvas calendar events used as a schedule (structured data — a candidate for a
+structured tool rather than retrieval).
+
 ## Notes
 
 - Adding structured tools has a cost. The 3B model juggles more tools less

@@ -83,3 +83,16 @@ class Announcement(CanvasModel):
     message: str | None = None  # HTML
     html_url: str | None = None
     posted_at: datetime | None = None
+
+
+class ModuleItem(CanvasModel):
+    title: str | None = None
+    type: str | None = None  # "Page" | "Assignment" | "File" | "ExternalUrl" | ...
+    html_url: str | None = None
+
+
+class Module(CanvasModel):
+    id: int
+    name: str | None = None
+    items: list[ModuleItem] = []
+    html_url: str | None = None  # constructed by the client (Canvas omits it)

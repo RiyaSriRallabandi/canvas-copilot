@@ -75,18 +75,49 @@ def ingest_course(
         pages = client.list_pages(course_id)
     except CanvasError:
         pages = []
+    seen_pages = {p.url for p in pages}
+    front = client.get_front_page(course_id)
+    if front and front.url not in seen_pages:
+        pages = [front, *pages]
     for summary in pages:
-        page = client.get_page(course_id, summary.url)
+        body = (
+            summary.body
+            if summary.body is not None
+            else (client.get_page(course_id, summary.url).body)
+        )
         chunks += result._add(
             "page",
             chunk_text(
-                html_to_text(page.body),
+                html_to_text(body),
                 course_id=course_id,
                 source_type="page",
-                source_title=page.title,
-                source_url=page.html_url,
+                source_title=summary.title,
+                source_url=summary.html_url,
             ),
         )
+
+    try:
+        modules = client.list_modules(course_id)
+    except CanvasError:
+        modules = []
+    for module in modules:
+        lines = [module.name or "Module"]
+        lines += [
+            f"- {item.title}" + (f" ({item.type})" if item.type else "")
+            for item in module.items
+            if item.title
+        ]
+        if len(lines) > 1:
+            chunks += result._add(
+                "module",
+                chunk_text(
+                    "\n".join(lines),
+                    course_id=course_id,
+                    source_type="module",
+                    source_title=module.name,
+                    source_url=module.html_url,
+                ),
+            )
 
     try:
         announcements = client.list_announcements(course_id)

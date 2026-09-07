@@ -7,6 +7,7 @@ Copilot's read-only guarantee.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -17,6 +18,7 @@ from canvas_copilot.canvas.models import (
     Assignment,
     Course,
     CourseNickname,
+    Module,
     Page,
     User,
 )
@@ -219,6 +221,22 @@ class CanvasClient:
         return Page.model_validate(
             self._get_one(f"/courses/{course_id}/pages/{page_url}")
         )
+
+    def get_front_page(self, course_id: int) -> Page | None:
+        try:
+            return Page.model_validate(self._get_one(f"/courses/{course_id}/front_page"))
+        except CanvasError:
+            return None  # 404 when the course has no front page set
+
+    def list_modules(self, course_id: int) -> list[Module]:
+        raw = self._get_paginated(f"/courses/{course_id}/modules", {"include[]": "items"})
+        web = re.sub(r"/api/v\d+/?$", "", str(self._client.base_url))
+        modules = []
+        for item in raw:
+            module = Module.model_validate(item)
+            module.html_url = f"{web}/courses/{course_id}/modules#module_{module.id}"
+            modules.append(module)
+        return modules
 
     def list_announcements(self, course_id: int) -> list[Announcement]:
         raw = self._get_paginated(

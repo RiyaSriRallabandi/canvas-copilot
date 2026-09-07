@@ -68,7 +68,7 @@ class AgentState(TypedDict):
 
 
 _DATE_TOOLS = {"get_todo", "course_assignments"}
-_COURSE_TOOLS = {"course_assignments", "resolve_course"}
+_COURSE_TOOLS = {"course_assignments", "course_content", "resolve_course"}
 
 _PRONOUNS = {"it", "that", "this", "them", "those", "the same", "that one", "this one"}
 
@@ -231,9 +231,7 @@ def build_agent(
             # The student's own words are authoritative for which course. The
             # model tends to narrow ("my AI class" -> "AI Strategy") or guess.
             if call["name"] in _COURSE_TOOLS:
-                arg_key = (
-                    "course_query" if call["name"] == "course_assignments" else "query"
-                )
+                arg_key = "query" if call["name"] == "resolve_course" else "course_query"
                 if phrase is not None:
                     check = deps.resolve(phrase)
                     if check.status == "ambiguous":

@@ -27,10 +27,10 @@ class FakeEmbedder:
         v[-1] = 0.01  # never all-zero
         return v
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self._vec(t) for t in texts]
 
-    def embed_one(self, text: str) -> list[float]:
+    def embed_query(self, text: str) -> list[float]:
         return self._vec(text)
 
 
@@ -50,7 +50,7 @@ def test_embedder_batches_and_parses(monkeypatch):
         return _resp(url, {"embeddings": [[0.0] * EMBED_DIM] * n})
 
     monkeypatch.setattr(httpx, "post", fake_post)
-    out = Embedder(batch_size=2).embed(["a", "b", "c"])
+    out = Embedder(batch_size=2).embed_documents(["a", "b", "c"])
     assert len(out) == 3
     assert batch_sizes == [2, 1]
 
@@ -58,7 +58,7 @@ def test_embedder_batches_and_parses(monkeypatch):
 def test_embedder_raises_on_bad_response(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda *a, **k: _resp("http://x/api/embed", {}))
     with pytest.raises(EmbedError):
-        Embedder().embed(["a"])
+        Embedder().embed_query("a")
 
 
 # -- VectorStore -----------------------------------------------------

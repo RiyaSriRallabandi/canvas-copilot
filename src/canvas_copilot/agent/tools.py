@@ -7,16 +7,20 @@ the text the model reads back as the tool result.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 
 from langchain_core.tools import BaseTool, tool
 
-from canvas_copilot.canvas.client import CanvasReader
+from canvas_copilot.canvas.client import CanvasClient, CanvasReader
 from canvas_copilot.canvas.models import Assignment, Course
+from canvas_copilot.content.embed import Embedder
+from canvas_copilot.content.search import Passage, search
 from canvas_copilot.resolve import Resolution, normalize
 from canvas_copilot.resolve import resolve_course as resolve_course_fn
 from canvas_copilot.storage import CourseCache, NicknameStore
+from canvas_copilot.storage.vectors import VectorStore
 
 
 class NeedsClarification(Exception):
@@ -37,6 +41,9 @@ class AgentDeps:
     client: CanvasReader
     cache: CourseCache
     nicknames: NicknameStore
+    # For content search: a DB connection and an embedder. None disables it.
+    conn: sqlite3.Connection | None = None
+    embedder: Embedder | None = None
     # Course picks made during THIS session (normalized phrase -> course id).
     # Populated when the student answers a clarification; not persisted.
     session_courses: dict[str, int] = field(default_factory=dict)
@@ -59,6 +66,21 @@ class AgentDeps:
         if result.status == "resolved" and result.course is not None:
             self.last_course_id = result.course.id
         return result
+
+    def search_content(self, course_id: int, question: str) -> list[Passage] | None:
+        """Passages from the course's indexed materials, or None if unavailable.
+
+        Indexes the course now if it hasn't been indexed yet.
+        """
+        if self.conn is None or self.embedder is None:
+            return None
+        if not VectorStore(self.conn).has_course(course_id):
+            if not isinstance(self.client, CanvasClient):
+                return None
+            from canvas_copilot.content.index import index_course
+
+            index_course(self.client, self.conn, self.embedder, course_id)
+        return search(self.conn, self.embedder, course_id, question)
 
 
 def course_label(course: Course) -> str:
@@ -180,10 +202,12 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         due_after: str | None = None,
         due_before: str | None = None,
     ) -> str:
-        """Assignments for ONE course. `course_query` is the student's own words
-        for the course ("AI Strategy", "my stats class", "Strategy") — this tool
-        figures out which course that is. Optional `due_after` / `due_before`
-        are ISO dates (YYYY-MM-DD) to limit to a window."""
+        """Assignments for ONE course, each with its due date, points, submission
+        status, and whether it is still open. Use this for anything about a
+        course's assignments, homework, projects, quizzes, or exams — including
+        "do I have a midterm", "is there a final", "how many points". `course_query`
+        is the student's own words for the course. Optional `due_after` /
+        `due_before` are ISO dates (YYYY-MM-DD) to limit to a window."""
         result = deps.resolve(course_query)
         if result.status == "ambiguous":
             raise NeedsClarification(course_query, result.candidates)
@@ -197,6 +221,41 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         header = f"{course_label(result.course)}:"
         past = " (this is a past course)" if result.past_course else ""
         return f"{header}{past}\n{_fmt_assignments(assignments)}"
+
+    @tool
+    def course_content(course_query: str, question: str) -> str:
+        """Read ONE course's written material — syllabus, pages, announcements —
+        to answer questions that are policy or prose. Use it for: the grading
+        breakdown or late policy, the class time and room, office hours, the
+        FORMAT of an exam (open book, length, Lockdown Browser), what a week's
+        topic is. Also use it as a fallback for an exam date that isn't in
+        `course_assignments`. For the list of assignments and their due dates,
+        prefer `course_assignments`. `course_query` is the student's words for
+        the course; `question` is what they want to know. Answer only from what
+        this returns."""
+        result = deps.resolve(course_query)
+        if result.status == "ambiguous":
+            raise NeedsClarification(course_query, result.candidates)
+        if result.course is None:
+            return format_resolution(result)
+
+        passages = deps.search_content(result.course.id, question)
+        if passages is None:
+            return (
+                f"{course_label(result.course)}: course materials aren't indexed. "
+                "Tell the student to run `canvas-copilot index`."
+            )
+        if not passages:
+            return (
+                f"{course_label(result.course)}: nothing about that was found in "
+                "the syllabus, pages, or announcements."
+            )
+        blocks = [f"{course_label(result.course)} — from the course materials:"]
+        for p in passages:
+            where = p.source_title or p.source_type
+            link = f" — {p.source_url}" if p.source_url else ""
+            blocks.append(f"\n[{where}{link}]\n{p.text}")
+        return "\n".join(blocks)
 
     @tool
     def get_todo(due_after: str | None = None, due_before: str | None = None) -> str:
@@ -246,6 +305,7 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         list_courses,
         resolve_course,
         course_assignments,
+        course_content,
         get_todo,
         get_upcoming_events,
     ]

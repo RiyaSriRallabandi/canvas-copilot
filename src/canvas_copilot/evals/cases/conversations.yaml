@@ -57,8 +57,10 @@
 
 - id: midterm-intro-ai
   turns:
+    # The fixture has the Midterm as an assignment, so a correct answer must
+    # come from course_assignments; assert the outcome, not the tool.
     - user: "Do I have a midterm in Introduction to Artificial Intelligence?"
-      tools_called: [course_assignments]
+      tools_not_called: [get_todo]
       answer_contains: ["Midterm"]
 
 - id: upcoming-across-courses

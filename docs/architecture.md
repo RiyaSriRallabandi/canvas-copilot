@@ -52,18 +52,21 @@ what those failure modes are and how each is contained.
 
 ## The tools
 
-The model sees five tools, each backed by the read-only Canvas client:
+The model sees six tools:
 
 | Tool | Returns |
 |---|---|
 | `list_courses` | the student's courses |
 | `resolve_course(query)` | which course a name/nickname refers to |
 | `course_assignments(course_query, due_after?, due_before?)` | one course's assignments, with points, submission status, and lock date |
+| `course_content(course_query, question)` | passages from the course's syllabus / pages / announcements / assignment text that match the question, with links |
 | `get_todo(due_after?, due_before?)` | the to-do list across all courses |
 | `get_upcoming_events` | upcoming events and due dates across all courses |
 
-`course_assignments` resolves the course itself, so the model never handles a
-course id — it passes the student's words and gets assignments back.
+`course_assignments` and `course_content` resolve the course themselves, so the
+model never handles a course id — it passes the student's words and gets the
+answer back. `course_content` runs the same vector search as the `search`
+command; if the course has not been indexed yet, it indexes it first.
 
 ## Libraries
 

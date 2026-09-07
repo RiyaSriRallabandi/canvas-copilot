@@ -25,7 +25,7 @@ def embed_course(conn: sqlite3.Connection, embedder: Embedder, course_id: int) -
     if not chunks:
         VectorStore(conn).replace_course(course_id, [])
         return 0
-    vectors = embedder.embed([c.text for c in chunks])
+    vectors = embedder.embed_documents([c.text for c in chunks])
     VectorStore(conn).replace_course(
         course_id, list(zip((c.id for c in chunks), vectors, strict=True))
     )
@@ -37,9 +37,9 @@ def search(
     embedder: Embedder,
     course_id: int,
     question: str,
-    k: int = 6,
+    k: int = 8,
 ) -> list[Passage]:
-    hits = VectorStore(conn).search(course_id, embedder.embed_one(question), k)
+    hits = VectorStore(conn).search(course_id, embedder.embed_query(question), k)
     if not hits:
         return []
     by_id = {c.id: c for c in ContentStore(conn).chunks_for(course_id)}

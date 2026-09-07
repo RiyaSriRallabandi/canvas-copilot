@@ -6,11 +6,12 @@ from dataclasses import dataclass
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# ~400 tokens per chunk, ~50 tokens of overlap. Split on structure first
-# (markdown headings from html2text), then paragraphs, then sentences.
+# ~200 tokens per chunk, ~40 of overlap. Small chunks keep a passage on one
+# topic, which matters for retrieval. Split on structure first (markdown
+# headings from html2text), then paragraphs, then sentences.
 _SPLITTER = RecursiveCharacterTextSplitter(
-    chunk_size=1600,
-    chunk_overlap=200,
+    chunk_size=800,
+    chunk_overlap=160,
     separators=["\n# ", "\n## ", "\n### ", "\n\n", "\n", ". ", " ", ""],
 )
 

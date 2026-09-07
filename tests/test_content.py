@@ -66,7 +66,7 @@ def test_chunk_text_splits_long_text_with_metadata():
     assert len(chunks) > 1
     assert all(c.course_id == 7 and c.source_type == "syllabus" for c in chunks)
     assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
-    assert all(len(c.text) <= 1700 for c in chunks)
+    assert all(len(c.text) <= 900 for c in chunks)
 
 
 def test_chunk_text_empty_returns_nothing():

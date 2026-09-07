@@ -30,14 +30,40 @@ COURSES = [
 ]
 
 
+class _FakeEmbedder:
+    """A dimension per keyword, so shared words make texts close."""
+
+    _WORDS = ["late", "penalty", "office", "hours", "exam", "room", "lockdown"]
+
+    def _vec(self, text):
+        vec = [0.0] * 768
+        low = text.lower()
+        for i, word in enumerate(self._WORDS):
+            if word in low:
+                vec[i] = 1.0
+        vec[-1] = 0.01
+        return vec
+
+    def embed_documents(self, texts):
+        return [self._vec(t) for t in texts]
+
+    def embed_query(self, text):
+        return self._vec(text)
+
+
 @pytest.fixture
 def tools():
     client = MagicMock()
     client.list_courses.return_value = COURSES
     cache = MagicMock()
     cache.get_courses.side_effect = lambda fetch, **kw: fetch()
+    conn = connect(":memory:")
     deps = AgentDeps(
-        client=client, cache=cache, nicknames=NicknameStore(connect(":memory:"))
+        client=client,
+        cache=cache,
+        nicknames=NicknameStore(conn),
+        conn=conn,
+        embedder=_FakeEmbedder(),
     )
     return {t.name: t for t in build_tools(deps)}, client
 
@@ -100,6 +126,63 @@ def test_course_assignments_ambiguous_raises(tools):
     tool_map, _ = tools
     with pytest.raises(NeedsClarification):
         tool_map["course_assignments"].invoke({"course_query": "ai"})
+
+
+def test_course_content_returns_matching_passages(tools):
+    from canvas_copilot.content.chunk import Chunk
+    from canvas_copilot.content.search import embed_course
+    from canvas_copilot.storage.content import ContentStore
+    from canvas_copilot.storage.db import connect as _connect
+
+    tool_map, _ = tools
+    # Rebuild deps with pre-indexed content for course 3 (Stats).
+    conn = _connect(":memory:")
+    ContentStore(conn).replace_course(
+        3,
+        [
+            Chunk(
+                3,
+                "syllabus",
+                "Grading",
+                "http://s",
+                0,
+                "Late work is accepted for three days at a 10% penalty per day.",
+            ),
+            Chunk(
+                3,
+                "syllabus",
+                "Office hours",
+                "http://s",
+                1,
+                "Instructor office hours are Wednesdays 2 to 4 pm.",
+            ),
+        ],
+    )
+    client = MagicMock()
+    client.list_courses.return_value = COURSES
+    cache = MagicMock()
+    cache.get_courses.side_effect = lambda fetch, **kw: fetch()
+    deps = AgentDeps(
+        client=client,
+        cache=cache,
+        nicknames=NicknameStore(conn),
+        conn=conn,
+        embedder=_FakeEmbedder(),
+    )
+    embed_course(conn, _FakeEmbedder(), 3)
+    tool = {t.name: t for t in build_tools(deps)}["course_content"]
+
+    out = tool.invoke({"course_query": "stats", "question": "what is the late policy"})
+    assert "10% penalty" in out or "Late work" in out
+    assert "http://s" in out
+
+
+def test_course_content_reports_when_not_indexed(tools):
+    tool_map, _ = tools
+    out = tool_map["course_content"].invoke(
+        {"course_query": "stats", "question": "late policy"}
+    )
+    assert "index" in out.lower()
 
 
 def test_course_assignments_passes_iso_window(tools):

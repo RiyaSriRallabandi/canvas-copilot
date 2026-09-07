@@ -33,7 +33,7 @@ class VectorStore:
         conn.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS content_vectors USING vec0("
             f"chunk_id INTEGER PRIMARY KEY, course_id INTEGER, "
-            f"embedding FLOAT[{EMBED_DIM}])"
+            f"embedding FLOAT[{EMBED_DIM}] distance_metric=cosine)"
         )
 
     def replace_course(self, course_id: int, rows: list[tuple[int, list[float]]]) -> None:

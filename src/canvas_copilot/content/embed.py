@@ -22,15 +22,19 @@ class Embedder:
         self.host = ollama_host.rstrip("/")
         self.batch_size = batch_size
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        # nomic-embed-text is trained with an asymmetric task prefix.
+        return self._embed([f"search_document: {t}" for t in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed([f"search_query: {text}"])[0]
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for start in range(0, len(texts), self.batch_size):
             batch = texts[start : start + self.batch_size]
             vectors.extend(self._embed_batch(batch))
         return vectors
-
-    def embed_one(self, text: str) -> list[float]:
-        return self._embed_batch([text])[0]
 
     def _embed_batch(self, batch: list[str]) -> list[list[float]]:
         try:

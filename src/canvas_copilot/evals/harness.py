@@ -34,7 +34,7 @@ def build_eval_agent(
     nicknames = NicknameStore(conn)
     for phrase, course_id in SEED_NICKNAMES:
         nicknames.add(phrase, course_id, source="manual")
-    deps = AgentDeps(FakeCanvasClient(), CourseCache(conn), nicknames)
+    deps = AgentDeps(FakeCanvasClient(), CourseCache(conn), nicknames, conn=conn)
     return build_agent(
         deps,
         model=model,

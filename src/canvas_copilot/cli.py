@@ -131,9 +131,7 @@ def index(
 ) -> None:
     """Fetch and store a course's syllabus, pages, and announcements for search."""
     from canvas_copilot.content.embed import Embedder, EmbedError
-    from canvas_copilot.content.ingest import ingest_course
-    from canvas_copilot.content.search import embed_course
-    from canvas_copilot.storage.content import ContentStore
+    from canvas_copilot.content.index import index_course
 
     settings = get_settings()
     conn, cache, nicknames = _open_storage()
@@ -155,14 +153,12 @@ def index(
         typer.echo("Name a course, or use --all.")
         raise typer.Exit(1)
 
-    store = ContentStore(conn)
     embedder = Embedder(settings.embed_model, settings.ollama_host)
     client = _client()
     try:
         for target in targets:
-            outcome = ingest_course(client, target.id, store)
+            outcome, embedded = index_course(client, conn, embedder, target.id)
             parts = ", ".join(f"{n} {kind}" for kind, n in outcome.counts.items() if n)
-            embedded = embed_course(conn, embedder, target.id)
             typer.echo(
                 f"{target.nickname or target.name}: {outcome.total} chunks "
                 f"({parts or 'nothing found'}), {embedded} embedded"
@@ -293,11 +289,18 @@ def _build_session_agent():
     from langgraph.checkpoint.memory import InMemorySaver
 
     from canvas_copilot.agent import AgentDeps, build_agent
+    from canvas_copilot.content.embed import Embedder
 
     settings = get_settings()
-    _, cache, nicknames = _open_storage()
+    conn, cache, nicknames = _open_storage()
     client = _client()
-    deps = AgentDeps(client=client, cache=cache, nicknames=nicknames)
+    deps = AgentDeps(
+        client=client,
+        cache=cache,
+        nicknames=nicknames,
+        conn=conn,
+        embedder=Embedder(settings.embed_model, settings.ollama_host),
+    )
     agent = build_agent(
         deps,
         model_name=settings.model,

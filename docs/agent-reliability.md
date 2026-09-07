@@ -47,13 +47,26 @@ them. Feeds the guardrail + prompt work in M6 and the eval in M7.
 - Added "answer course naming/counting from context, but MUST use a tool for
   assignments/dates" and "don't restate earlier answers".
 
-## Open question: is qwen2.5:3b strong enough?
+## Model size — decided (M6): stay on qwen2.5:3b
 
-The bake-off (single-turn tool selection) it aced. Multi-turn `chat` exposes
-real weaknesses: it misses "AI Strategy" when asked "which are my AI classes"
-(a 6-item list), narrates its own confusion instead of retrying, and drifts /
-repeats as history grows. **M6 should re-run the bake-off with a 7–8B model
-against the real agent + a multi-turn eval before committing to 3B.**
+The M6 multi-turn eval (17 scenarios, real agent) scored **qwen2.5:3b and
+qwen2.5:7b identically on tool sequencing (0.70)**. The 7B is not systematically
+better — it fixes some scenarios and breaks others — for 2.5× the download and
+2× the latency. See `docs/model-bakeoff.md`. So the ~0.70 ceiling is a steering
+problem, addressed by:
+
+## Levers, in priority order
+
+1. **Workflow / structural constraints** (in progress) — remove the model's
+   ability to make the mistakes it keeps making. e.g. a `course_assignments`
+   tool that resolves the course internally, so the model can't skip
+   `resolve_course`; auto-inject the resolved date window when the model omits
+   it.
+2. **Prompt engineering** — shorter prompt, critical rules first, 1-2 few-shot
+   tool sequences.
+3. **Constrained generation** — Ollama JSON/schema mode.
+4. **Fine-tuning** — NOT pursued: needs a labeled dataset, can't train on an
+   8 GB Mac, brittle to maintain. Revisit only if 1-3 plateau well short.
 
 ## Still open → M6 / M7
 

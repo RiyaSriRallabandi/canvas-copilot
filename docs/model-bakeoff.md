@@ -50,6 +50,30 @@ The failure *patterns* decided it, not just the totals:
   `list_courses` vs `resolve_course` descriptions fixes it. This is a
   tool-description clarity issue, addressed in M4.
 
+## Round 3 (M6) — multi-turn, against the real agent
+
+The M3 eval was single-turn tool *selection* with stub tools. M6 added a
+multi-turn harness (`evals/bakeoff.py` + `evals/scenarios.py` + `evals/fixtures.py`):
+17 conversation scenarios run through the real graph with canned Canvas data,
+scored on tool sequencing, answer structure, and refusals.
+
+| Metric | qwen2.5:3b | qwen2.5:7b |
+|---|---|---|
+| Overall | 0.80 | 0.80 |
+| Tool sequencing | **0.70** | **0.70** |
+| Answer structure | 0.55 | 0.65 |
+| Refusal | 1.0 | 1.0 |
+| Latency / scenario | 7.1 s | 14.7 s |
+| Download | 1.9 GB | 4.7 GB |
+
+**Decision: stay on qwen2.5:3b.** The 7B's tool-sequencing score is identical —
+it still skips `resolve_course` and mis-picks tools on dated questions. It just
+shuffles *which* scenarios fail. Answer text is marginally cleaner, not worth
+2.5× the download and 2× the latency. The ~0.70 ceiling is a **steering
+problem** (workflow + prompt), not model capacity — so that is where M6/M7
+effort goes. Model size and fine-tuning are documented as unused levers in
+`docs/agent-reliability.md`.
+
 ## Done in M4
 
 - Sharpened the `list_courses` vs `resolve_course` descriptions; re-ran this eval

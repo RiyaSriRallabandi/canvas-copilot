@@ -213,8 +213,15 @@ def build_agent(
                     if prev:
                         args[arg_key] = prev.name
 
-            if call["name"] in _DATE_TOOLS and window and not args.get("due_after"):
-                args["due_after"], args["due_before"] = window
+            # The question's date intent is authoritative: use the resolved
+            # window if there is one, otherwise drop any window the model
+            # invented ("how many points is X" is not a dated question).
+            if call["name"] in _DATE_TOOLS:
+                if window:
+                    args["due_after"], args["due_before"] = window
+                else:
+                    args.pop("due_after", None)
+                    args.pop("due_before", None)
 
             try:
                 content = str(tool.invoke(args))

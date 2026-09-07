@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from canvas_copilot.canvas.models import Assignment, Course, User
+from canvas_copilot.canvas.models import Assignment, Course, Submission, User
 
 TODAY = date(2026, 3, 16)  # Monday
 
@@ -66,6 +66,10 @@ FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
             course_id=55274,
             name="Company Selection Survey",
             due_at=_dt(11),
+            lock_at=_dt(11),
+            points_possible=10,
+            submission_types=["online_text_entry"],
+            submission=Submission(workflow_state="graded", score=10),
             html_url=_URL.format(c=55274, a=1),
         ),
         Assignment(
@@ -73,6 +77,9 @@ FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
             course_id=55274,
             name="Canvas 1 Team Assignment",
             due_at=_dt(18),
+            points_possible=100,
+            submission_types=["online_upload"],
+            submission=Submission(workflow_state="unsubmitted"),
             html_url=_URL.format(c=55274, a=2),
         ),
         Assignment(
@@ -89,6 +96,10 @@ FAKE_ASSIGNMENTS: dict[int, list[Assignment]] = {
             course_id=55751,
             name="Worksheet 2",
             due_at=_dt(13),
+            lock_at=_dt(20),  # a grace window: due the 13th, closes the 20th
+            points_possible=20,
+            submission_types=["online_upload"],
+            submission=Submission(workflow_state="unsubmitted"),
             html_url=_URL.format(c=55751, a=4),
         ),
         Assignment(

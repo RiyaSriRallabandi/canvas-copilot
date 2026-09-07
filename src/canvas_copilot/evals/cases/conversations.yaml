@@ -129,3 +129,16 @@
     - user: "What assignments were in the OPTIONAL Introduction to Python Programming course?"
       tools_called: [course_assignments]
       answer_contains: ["Python Basics Quiz"]
+
+- id: assignment-points
+  turns:
+    - user: "How many points is the Canvas 1 Team Assignment in AI Strategy?"
+      tools_called: [course_assignments]
+      answer_contains: ["100"]
+
+- id: forgot-to-submit
+  turns:
+    # Worksheet 2 was due Mar 13 but stays open (lock_at) until Mar 20; today is Mar 16.
+    - user: "I forgot to submit Worksheet 2 for Introduction to Artificial Intelligence last night. Is it still open?"
+      tools_called: [course_assignments]
+      answer_excludes: ["closed", "too late", "missed the deadline", "Assignment name"]

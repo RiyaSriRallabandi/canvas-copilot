@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from canvas_copilot.agent.tools import AgentDeps, NeedsClarification, build_tools
-from canvas_copilot.canvas.models import Assignment, Course
+from canvas_copilot.canvas.models import Assignment, Course, Submission
 from canvas_copilot.storage.db import connect
 from canvas_copilot.storage.nicknames import NicknameStore
 
@@ -75,6 +75,25 @@ def test_course_assignments_resolves_course_and_formats_links(tools):
     # resolved to course id 3 internally
     assert client.list_assignments.call_args.args[0] == 3
     assert "[Problem Set 1](https://canvas.cmu.edu/courses/3/assignments/9)" in out
+
+
+def test_course_assignments_reports_points_submission_and_lock(tools):
+    tool_map, client = tools
+    client.list_assignments.return_value = [
+        Assignment(
+            id=1,
+            name="Final Paper",
+            due_at=datetime(2026, 9, 1, 3, 59, tzinfo=UTC),
+            lock_at=datetime(2030, 1, 1, tzinfo=UTC),  # far future -> still open
+            points_possible=50,
+            submission_types=["online_upload"],
+            submission=Submission(workflow_state="unsubmitted"),
+        )
+    ]
+    out = tool_map["course_assignments"].invoke({"course_query": "stats"})
+    assert "50 pts" in out
+    assert "not submitted" in out
+    assert "open until" in out
 
 
 def test_course_assignments_ambiguous_raises(tools):

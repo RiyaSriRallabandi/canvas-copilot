@@ -8,7 +8,7 @@ the text the model reads back as the tool result.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 
 from langchain_core.tools import BaseTool, tool
 
@@ -88,12 +88,41 @@ def _parse_iso(value: str | None, *, end_of_day: bool = False) -> datetime | Non
     return datetime.combine(date.fromisoformat(value), moment).astimezone()
 
 
+def _fmt_dt(value: datetime | None) -> str:
+    if value is None:
+        return "—"
+    return value.astimezone().strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
+
+
 def _fmt_due(assignment: Assignment) -> str:
-    if assignment.due_at is None:
-        return "no due date"
-    return (
-        assignment.due_at.astimezone().strftime("%a %b %d, %I:%M %p").replace(" 0", " ")
-    )
+    return "no due date" if assignment.due_at is None else _fmt_dt(assignment.due_at)
+
+
+def _submission_note(a: Assignment) -> str | None:
+    sub = a.submission
+    if sub and sub.workflow_state == "graded":
+        score = (
+            f" ({sub.score:g}/{a.points_possible:g})"
+            if (sub.score is not None and a.points_possible)
+            else ""
+        )
+        return f"graded{score}"
+    if sub and sub.is_submitted:
+        return "submitted"
+    if a.is_submittable_online:
+        return "not submitted"
+    return None
+
+
+def _open_note(a: Assignment, *, now: datetime | None = None) -> str | None:
+    now = now or datetime.now(UTC)
+    if a.lock_at and now > a.lock_at:
+        return f"closed {_fmt_dt(a.lock_at)}"
+    if a.unlock_at and now < a.unlock_at:
+        return f"opens {_fmt_dt(a.unlock_at)}"
+    if a.lock_at:
+        return f"open until {_fmt_dt(a.lock_at)}"
+    return None
 
 
 def _fmt_assignments(
@@ -104,10 +133,15 @@ def _fmt_assignments(
     lines = []
     for a in items:
         link = f"[{a.name}]({a.html_url})" if a.html_url else a.name
-        suffix = ""
+        facts = [f"due {_fmt_due(a)}"]
+        if a.points_possible:
+            facts.append(f"{a.points_possible:g} pts")
+        for note in (_submission_note(a), _open_note(a)):
+            if note:
+                facts.append(note)
         if course_label and a.course_id in course_label:
-            suffix = f" — {course_label[a.course_id]}"
-        lines.append(f"- {link} — due {_fmt_due(a)}{suffix}")
+            facts.append(course_label[a.course_id])
+        lines.append(f"- {link} — {' | '.join(facts)}")
     return "\n".join(lines)
 
 

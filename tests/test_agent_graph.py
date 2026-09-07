@@ -257,6 +257,41 @@ def test_course_assignments_injects_the_date_window():
     assert kwargs["due_after"].date().isoformat() == "2026-03-16"
 
 
+def test_course_assignments_strips_a_date_window_the_model_invented():
+    deps, client = _deps([Course(id=7, name="Stats", nickname="Stats", is_favorite=True)])
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[
+                    {
+                        "name": "course_assignments",
+                        "args": {
+                            "course_query": "stats",
+                            "due_after": "2026-03-16",
+                            "due_before": "2026-03-16",
+                        },
+                        "id": "g1",
+                    }
+                ],
+            ),
+            AIMessage(content="done", id="c2"),
+        ]
+    )
+    agent = build_agent(deps, model=model)
+    agent.invoke(
+        {
+            "messages": [("user", "how many points is the term paper in stats?")],
+            "date_hints": "",
+            "date_window": None,  # the question has no date phrase
+            "clarify": None,
+        }
+    )
+    _, kwargs = client.list_assignments.call_args
+    assert kwargs["due_after"] is None and kwargs["due_before"] is None
+
+
 def test_conversation_remembers_the_resolved_course_across_turns():
     from langgraph.checkpoint.memory import InMemorySaver
 

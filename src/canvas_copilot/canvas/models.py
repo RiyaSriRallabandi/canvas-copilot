@@ -34,13 +34,34 @@ class Course(CanvasModel):
     is_favorite: bool = False
 
 
+class Submission(CanvasModel):
+    # "unsubmitted" | "submitted" | "pending_review" | "graded"
+    workflow_state: str | None = None
+    submitted_at: datetime | None = None
+    score: float | None = None
+
+    @property
+    def is_submitted(self) -> bool:
+        return self.workflow_state in {"submitted", "pending_review", "graded"}
+
+
 class Assignment(CanvasModel):
     id: int
     course_id: int | None = None
     name: str
     due_at: datetime | None = None
+    unlock_at: datetime | None = None
+    lock_at: datetime | None = None
     html_url: str | None = None
     points_possible: float | None = None
+    submission_types: list[str] = []
+    # Present only when the assignments list is fetched with include[]=submission.
+    submission: Submission | None = None
+
+    @property
+    def is_submittable_online(self) -> bool:
+        online = {"online_text_entry", "online_url", "online_upload", "online_quiz"}
+        return bool(online.intersection(self.submission_types))
 
 
 class CourseNickname(CanvasModel):

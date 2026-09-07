@@ -182,7 +182,9 @@ class CanvasClient:
         due_after: datetime | None = None,
         due_before: datetime | None = None,
     ) -> list[Assignment]:
-        raw = self._get_paginated(f"/courses/{course_id}/assignments")
+        raw = self._get_paginated(
+            f"/courses/{course_id}/assignments", {"include[]": "submission"}
+        )
         assignments = [Assignment.model_validate(item) for item in raw]
         if due_after is not None:
             assignments = [a for a in assignments if a.due_at and a.due_at >= due_after]

@@ -35,7 +35,11 @@ from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
 from canvas_copilot.agent._util import message_text
-from canvas_copilot.agent.guardrails import REFUSAL, is_solve_request
+from canvas_copilot.agent.guardrails import (
+    REFUSAL,
+    is_logistics_question,
+    is_solve_request,
+)
 from canvas_copilot.agent.tools import (
     AgentDeps,
     NeedsClarification,
@@ -58,6 +62,9 @@ class AgentState(TypedDict):
     # get_todo / course_assignments when the model omits the dates.
     date_window: tuple[str, str] | None
     clarify: Clarification | None
+    # Set once a "do my graded work" request is caught, so follow-ups in the
+    # same conversation can't wear the model down over several turns.
+    blocked: bool
 
 
 _DATE_TOOLS = {"get_todo", "course_assignments"}
@@ -65,9 +72,10 @@ _COURSE_TOOLS = {"course_assignments", "resolve_course"}
 
 _PRONOUNS = {"it", "that", "this", "them", "those", "the same", "that one", "this one"}
 
-# The chunk of a question that names a course: text after "in/for/about".
+# The chunk of a question that names a course: text after "in" / "for".
+# "about" is excluded — "courses about AI" is a topic, not a course name.
 _COURSE_PHRASE = re.compile(
-    r"\b(?:in|for|about)\s+(.+?)"
+    r"\b(?:in|for)\s+(.+?)"
     r"(?:\s+(?:this|next|coming|due|by|on|today|tomorrow)\b.*)?[?.!]*$",
     re.IGNORECASE,
 )
@@ -75,13 +83,30 @@ _COURSE_PHRASE = re.compile(
 _PRONOUN_REF = re.compile(
     r"\b(it|that class|that course|the same( one)?|this class)\b", re.I
 )
+# "which of my courses…", "how many classes…" — answered from the course list.
+# Deliberately narrow: "what assignments in the X course" must NOT match.
+_LIST_Q = re.compile(
+    r"\b(how many (of my )?(courses|classes)"
+    r"|which (of my )?(courses|classes)"
+    r"|what (courses|classes) (am i|do i|are)"
+    r"|(list|name) (my |the )?(courses|classes))\b",
+    re.IGNORECASE,
+)
+# A vague follow-up after a block ("keep going", "help me", "the rest").
+_CONTINUATION = re.compile(
+    r"\b(help|continue|keep going|go on|more|next|the rest|walk me|show me|"
+    r"explain how|develop|write|solve|draft|build|create|do it|first step)\b",
+    re.IGNORECASE,
+)
 
 
 def _course_phrase(text: str) -> str | None:
     """An explicit course reference in the question, or None.
 
-    None when there is no "in/for/about X", or X is just a pronoun.
+    None when there is no "in/for X", X is a pronoun, or it's a list question.
     """
+    if _LIST_Q.search(text):
+        return None
     match = _COURSE_PHRASE.search(text)
     if not match or not match.group(1).strip():
         return None
@@ -146,12 +171,23 @@ def build_agent(
 
     def route_start(state: AgentState) -> str:
         last = state["messages"][-1]
-        if isinstance(last, HumanMessage) and is_solve_request(message_text(last)):
+        if not isinstance(last, HumanMessage):
+            return "agent"
+        text = message_text(last)
+        if is_solve_request(text):
+            return "refuse"
+        # Once blocked, keep refusing vague "keep helping me" follow-ups, but let
+        # the student pivot back to logistics.
+        if (
+            state.get("blocked")
+            and _CONTINUATION.search(text)
+            and not is_logistics_question(text)
+        ):
             return "refuse"
         return "agent"
 
     def refuse(state: AgentState) -> dict:
-        return {"messages": [AIMessage(content=REFUSAL)]}
+        return {"messages": [AIMessage(content=REFUSAL)], "blocked": True}
 
     def agent(state: AgentState) -> dict:
         messages = [
@@ -180,6 +216,17 @@ def build_agent(
                 continue
 
             args = dict(call["args"])
+
+            # "which of my courses are about X" is answered from the course list.
+            if call["name"] in _COURSE_TOOLS and _LIST_Q.search(student_text):
+                results.append(
+                    ToolMessage(
+                        content="This is a question about the course list, which "
+                        "you already have. Answer it directly without a tool.",
+                        tool_call_id=call["id"],
+                    )
+                )
+                continue
 
             # The student's own words are authoritative for which course. The
             # model tends to narrow ("my AI class" -> "AI Strategy") or guess.

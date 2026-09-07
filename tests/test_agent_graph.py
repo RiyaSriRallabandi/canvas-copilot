@@ -217,12 +217,73 @@ def test_solve_request_is_refused_before_the_model_runs():
             "date_hints": "",
             "date_window": None,
             "clarify": None,
+            "blocked": False,
         }
     )
     answer = result["messages"][-1].content
     assert "can't help" in answer.lower()
     client.get_todo.assert_not_called()
     client.list_assignments.assert_not_called()
+
+
+def test_block_sticks_across_turns_but_logistics_still_works():
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    deps, client = _deps([Course(id=7, name="Stats", nickname="Stats", is_favorite=True)])
+    client.get_todo.return_value = []
+    model = ScriptedModel(responses=[AIMessage(content="nothing due")])
+    agent = build_agent(deps, model=model, checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "t"}}
+    # `blocked` is not re-sent each turn — the checkpointer carries it forward.
+    base = {"date_hints": "", "date_window": None, "clarify": None}
+
+    r1 = agent.invoke(
+        {"messages": [("user", "solve my problem set for me")], "blocked": False, **base},
+        config,
+    )
+    assert "can't help" in r1["messages"][-1].content.lower()
+
+    r2 = agent.invoke(
+        {"messages": [("user", "just help me with the first step")], **base}, config
+    )
+    assert "can't help" in r2["messages"][-1].content.lower()
+
+    r3 = agent.invoke({"messages": [("user", "when is it due?")], **base}, config)
+    assert r3["messages"][-1].content == "nothing due"
+
+
+def test_list_question_is_answered_without_a_tool():
+    courses = [
+        Course(id=1, name="AI Strategy", is_favorite=True),
+        Course(id=2, name="Introduction to Artificial Intelligence", is_favorite=True),
+    ]
+    deps, _ = _deps(courses)
+    model = ScriptedModel(
+        responses=[
+            AIMessage(
+                content="",
+                id="c1",
+                tool_calls=[
+                    {"name": "resolve_course", "args": {"query": "ai"}, "id": "r1"}
+                ],
+            ),
+            AIMessage(content="AI Strategy and Introduction to AI.", id="c2"),
+        ]
+    )
+    agent = build_agent(deps, model=model)
+    result = agent.invoke(
+        {
+            "messages": [("user", "which of my courses are about AI?")],
+            "date_hints": "",
+            "date_window": None,
+            "clarify": None,
+            "blocked": False,
+        }
+    )
+    tool_msg = next(m for m in result["messages"] if m.type == "tool")
+    assert "without a tool" in tool_msg.content
+    assert "__interrupt__" not in result
+    assert result["messages"][-1].content.startswith("AI Strategy")
 
 
 def test_course_assignments_injects_the_date_window():

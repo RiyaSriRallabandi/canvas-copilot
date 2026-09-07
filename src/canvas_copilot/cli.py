@@ -255,6 +255,7 @@ def _converse(agent, config, question: str, *, verbose: bool) -> str:
             "date_hints": hints_for(question, today),
             "date_window": primary_window(question, today),
             "clarify": None,
+            "blocked": False,
         },
         config,
     )

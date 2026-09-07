@@ -20,11 +20,15 @@ stays a swappable component rather than the thing correctness depends on.
 
 **Course reference.** `run_tools` does not trust the `course_query` the model
 passes. It pulls the course phrase out of the student's own message (the text
-after "in" / "for" / "about", ignoring pronouns), resolves that, and overrides
-the model's argument with the result. An ambiguous phrase triggers the
-clarification pause regardless of what the model narrowed it to. A follow-up that
-refers back ("does it…", "that class") uses the last course resolved in the
-session.
+after "in" / "for", ignoring pronouns), resolves that, and overrides the model's
+argument with the result. An ambiguous phrase triggers the clarification pause
+regardless of what the model narrowed it to. A follow-up that refers back
+("does it…", "that class") uses the last course resolved in the session.
+
+**List questions.** "which of my courses are about AI", "how many classes am I
+taking" are answered from the course list already in context. If the model calls
+a course tool for one of these, `run_tools` returns a note telling it to answer
+directly — so "about AI" is never mistaken for a course named "AI".
 
 **One combined tool.** `course_assignments` takes a course name and resolves it
 internally. There is no separate "get assignments by id" tool, so there is no id
@@ -36,13 +40,23 @@ entirely for `get_todo` and `course_assignments`: if the question implies a
 range it is applied, and if the question says nothing about dates, any range the
 model added is dropped.
 
-**The refusal boundary.** A regex screen (`agent/guardrails.py`) runs before the
-model. It matches the common direct and indirect forms — "do/write/solve my
-<work>", "<work> for me", "walk me through the solution", "check my answer",
-"step by step" near an assignment — and routes straight to a canned refusal. The
-system prompt tells the model to refuse as well, as a backstop for phrasings the
-regex misses. `tests/test_guardrails.py` holds ~20 phrasings the screen must
-catch and ~14 legitimate questions it must not block.
+**The refusal boundary.** Three layers:
+
+- A regex screen (`agent/guardrails.py`) runs before the model. It matches the
+  common direct and indirect forms — "do/solve/write/develop my <work>", "<work>
+  for me", "help me <do> …", "walk me through the assignment", "check my answer",
+  "step by step" near an assignment — and routes straight to a canned refusal.
+  Verb inflections are covered (solve/solving/solved).
+- Once a request is caught, the thread is marked `blocked`. Vague follow-ups
+  ("keep going", "help me with the next part") stay refused, so the model can't
+  be worn down over several turns. A clear logistics question ("when is it due",
+  "how many points") lifts through.
+- The system prompt tells the model to refuse as well, for phrasings the regex
+  misses.
+
+`tests/test_guardrails.py` holds ~30 phrasings the screen must catch (including
+ones observed leaking in live testing) and ~18 legitimate questions it must not
+block.
 
 **Session memory.** `chat` keeps one thread through an in-memory checkpointer, so
 the course context and history carry across turns. It lives for the length of

@@ -57,6 +57,7 @@ def run_scenario(agent, scenario: Scenario) -> list[TurnTranscript]:
                 "date_hints": hints_for(turn.user, TODAY),
                 "date_window": primary_window(turn.user, TODAY),
                 "clarify": None,
+                "blocked": False,
             },
             config,
         )

@@ -12,6 +12,12 @@ It is a navigation and convenience tool, not an academic one. It looks up and
 summarizes logistics — assignments, due dates, points, submission status, exams.
 It does not help complete graded work and refuses requests to do so.
 
+![The Canvas Copilot home screen](docs/img/home.png)
+
+![The chat UI answering questions about assignments and a grading breakdown](docs/img/chat.png)
+
+*Screens shown with sample data.*
+
 ## How it works
 
 - **Read-only.** Every call to Canvas is a `GET`. The client raises rather than

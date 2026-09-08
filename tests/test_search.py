@@ -137,3 +137,62 @@ def test_search_returns_nothing_when_course_unindexed():
     conn = connect(":memory:")
     VectorStore(conn)  # create the table
     assert search(conn, FakeEmbedder(), 99, "anything") == []
+
+
+def test_keyword_ranking_reaches_assignment_text_vector_search_skips():
+    """Assignment chunks are outside the vector corpus but still keyword-reachable."""
+    conn = connect(":memory:")
+    ContentStore(conn).replace_course(
+        5,
+        [
+            Chunk(5, "syllabus", "Overview", "http://s", 0, "This course meets weekly."),
+            Chunk(
+                5,
+                "assignment",
+                "Quiz 2",
+                "http://a/2",
+                0,
+                "Quiz 2 must be taken with LockDown Browser installed beforehand.",
+            ),
+        ],
+    )
+    embed_course(conn, FakeEmbedder(), 5)
+
+    hits = search(conn, FakeEmbedder(), 5, "do I need lockdown browser for the quiz", k=3)
+    assert any("LockDown Browser" in p.text for p in hits)
+    assert all(p.score > 0 for p in hits)
+
+
+def test_exact_term_chunk_outranks_semantically_near_ones():
+    conn = connect(":memory:")
+    ContentStore(conn).replace_course(
+        6,
+        [
+            Chunk(6, "syllabus", "Grading", "http://s", 0, "Grade Breakdown: 40% exams."),
+            Chunk(
+                6, "syllabus", "Exams", "http://s", 1, "Exams are held in the exam room."
+            ),
+            Chunk(6, "syllabus", "Late", "http://s", 2, "Late work loses grade points."),
+        ],
+    )
+    embed_course(conn, FakeEmbedder(), 6)
+
+    hits = search(
+        conn, FakeEmbedder(), 6, "what is the grade breakdown for the exam", k=3
+    )
+    assert hits[0].text.startswith("Grade Breakdown")
+
+
+def test_scores_are_descending():
+    conn = connect(":memory:")
+    ContentStore(conn).replace_course(
+        8,
+        [
+            Chunk(8, "syllabus", "A", "http://s", 0, "Attendance is taken by poll."),
+            Chunk(8, "syllabus", "B", "http://s", 1, "Office hours are on Wednesday."),
+            Chunk(8, "page", "C", "http://p", 0, "The exam room is GHC 4401."),
+        ],
+    )
+    embed_course(conn, FakeEmbedder(), 8)
+    hits = search(conn, FakeEmbedder(), 8, "where is the exam room", k=3)
+    assert [p.score for p in hits] == sorted((p.score for p in hits), reverse=True)

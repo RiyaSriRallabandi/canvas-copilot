@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import PrivateAttr
 
-from canvas_copilot.agent.graph import build_agent
+from canvas_copilot.agent.graph import _course_phrase, build_agent
 from canvas_copilot.agent.tools import AgentDeps
 from canvas_copilot.canvas.models import Assignment, Course
 
@@ -104,6 +105,35 @@ def test_tool_loop_is_capped():
     assert result["messages"][-1].content == "done"
     tool_turns = sum(1 for m in result["messages"] if m.type == "ai" and m.tool_calls)
     assert tool_turns == 4  # MAX_TOOL_TURNS
+
+
+def test_tool_cap_resets_each_question_in_a_chat():
+    """The cap is per question — a long chat keeps calling tools."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    deps, client = _deps()
+    responses = [
+        m
+        for i in range(5)
+        for m in (
+            AIMessage(
+                content="",
+                id=f"c{i}",
+                tool_calls=[{"name": "get_todo", "args": {}, "id": f"t{i}"}],
+            ),
+            AIMessage(content=f"answer {i}", id=f"a{i}"),
+        )
+    ]
+    agent = build_agent(
+        deps, model=ScriptedModel(responses=responses), checkpointer=InMemorySaver()
+    )
+    config = {"configurable": {"thread_id": "chat"}}
+    for i in range(5):  # well past MAX_TOOL_TURNS cumulative
+        out = agent.invoke(
+            {"messages": [("user", f"what's due? ({i})")], "date_hints": ""}, config
+        )
+        assert out["messages"][-1].content == f"answer {i}"
+    assert client.get_todo.call_count == 5
 
 
 def test_explicit_course_phrase_overrides_the_models_guess():
@@ -281,7 +311,8 @@ def test_list_question_is_answered_without_a_tool():
         }
     )
     tool_msg = next(m for m in result["messages"] if m.type == "tool")
-    assert "without a tool" in tool_msg.content
+    assert "Do not use a tool" in tool_msg.content
+    assert "Introduction to Artificial Intelligence" in tool_msg.content  # roster inline
     assert "__interrupt__" not in result
     assert result["messages"][-1].content.startswith("AI Strategy")
 
@@ -459,3 +490,29 @@ def test_ambiguous_course_pauses_then_resumes_with_the_pick():
     # remembered for the session (not persisted)
     assert deps.session_courses == {"ai": 20}
     assert resumed["messages"][-1].content == "Here's your AI class work."
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "which of my courses are about AI?",
+        "what AI classes do I have?",
+        "what all ai courses do i have",
+        "how many classes am I taking?",
+        "list my courses",
+    ],
+)
+def test_list_questions_carry_no_course_phrase(question):
+    assert _course_phrase(question) is None
+
+
+@pytest.mark.parametrize(
+    ("question", "phrase"),
+    [
+        ("what assignments are in the AI Strategy class?", "the AI Strategy class"),
+        ("is there a midterm in Negotiation?", "Negotiation"),
+        ("what's the late policy for Stats", "Stats"),
+    ],
+)
+def test_course_questions_still_yield_a_phrase(question, phrase):
+    assert _course_phrase(question) == phrase

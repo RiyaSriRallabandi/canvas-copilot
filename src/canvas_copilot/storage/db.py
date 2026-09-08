@@ -59,6 +59,22 @@ _MIGRATIONS: list[str] = [
         indexed_at TEXT NOT NULL
     );
     """,
+    # A keyword (BM25) index over the same chunks. Content search fuses this with
+    # vector search, so an exact-term match ("Grade Breakdown") ranks well even
+    # when the embedder can't separate it from its neighbours. `external_syllabus_url`
+    # records a course whose syllabus is a link out of Canvas; `schema` lets the
+    # indexer tell when stored chunks predate a chunking/retrieval change.
+    """
+    CREATE VIRTUAL TABLE content_fts USING fts5(
+        text,
+        chunk_id UNINDEXED,
+        course_id UNINDEXED,
+        tokenize = 'porter unicode61'
+    );
+
+    ALTER TABLE content_index_meta ADD COLUMN external_syllabus_url TEXT;
+    ALTER TABLE content_index_meta ADD COLUMN schema INTEGER NOT NULL DEFAULT 1;
+    """,
 ]
 
 

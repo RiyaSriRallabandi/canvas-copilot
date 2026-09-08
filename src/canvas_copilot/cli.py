@@ -200,11 +200,11 @@ def search(course: str, question: str) -> None:
         raise typer.Exit(1) from exc
 
     if not passages:
-        typer.echo("Nothing indexed for that course. Run `canvas-copilot index` first.")
+        typer.echo("Nothing matched. Run `canvas-copilot index` if it isn't indexed.")
         return
     for p in passages:
         loc = f"{p.source_type}: {p.source_title}" if p.source_title else p.source_type
-        typer.echo(f"\n[{p.distance:.3f}] {loc}\n  {p.source_url or ''}")
+        typer.echo(f"\n[score {p.score:.4f}] {loc}\n  {p.source_url or ''}")
         typer.echo("  " + p.text[:400].replace("\n", "\n  "))
 
 

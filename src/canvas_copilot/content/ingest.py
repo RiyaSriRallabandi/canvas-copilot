@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from canvas_copilot.canvas.client import CanvasClient, CanvasError
 from canvas_copilot.content.chunk import Chunk, chunk_text
 from canvas_copilot.content.clean import html_to_text, pdf_to_text
+from canvas_copilot.content.syllabus import external_syllabus_url
 from canvas_copilot.storage.content import ContentStore
 
 _SYLLABUS_FILE = re.compile(r"syllab", re.IGNORECASE)
@@ -44,15 +45,28 @@ def ingest_course(
     result = IngestResult(course_id)
     chunks: list[Chunk] = []
 
-    chunks += result._add(
-        "syllabus",
-        chunk_text(
-            html_to_text(client.get_syllabus(course_id)),
-            course_id=course_id,
-            source_type="syllabus",
-            source_title="Syllabus",
-        ),
-    )
+    try:
+        web_base = client.web_base_url
+    except Exception:  # noqa: BLE001 - a bad base URL shouldn't stop ingestion
+        web_base = None
+    raw_syllabus = client.get_syllabus(course_id)
+    external_url = external_syllabus_url(raw_syllabus, canvas_host=web_base)
+    if not external_url:
+        # A link-only syllabus ("read it here: <google doc>") is noise once the
+        # link is captured in meta; only chunk a syllabus that has real prose.
+        syllabus_url = (
+            f"{web_base}/courses/{course_id}/assignments/syllabus" if web_base else None
+        )
+        chunks += result._add(
+            "syllabus",
+            chunk_text(
+                html_to_text(raw_syllabus),
+                course_id=course_id,
+                source_type="syllabus",
+                source_title="Syllabus",
+                source_url=syllabus_url,
+            ),
+        )
 
     try:
         pdf_file = _find_syllabus_pdf(client.list_files(course_id))
@@ -148,5 +162,5 @@ def ingest_course(
                 ),
             )
 
-    store.replace_course(course_id, chunks)
+    store.replace_course(course_id, chunks, external_syllabus_url=external_url)
     return result

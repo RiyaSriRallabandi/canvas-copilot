@@ -21,18 +21,25 @@ syllabus, Pages, modules, and announcement text.
   (only if the course uses weighted groups)
 - Any new announcements? (the list) — `/courses/:id/discussion_topics?only_announcements=true`
 
-## Needs RAG (syllabus / Pages / modules / announcement text)
+## Answered by content search (`course_content`, hybrid keyword + vector)
+
+Handled when the material is in Canvas; when it is only in an off-Canvas
+syllabus, the answer is the link:
 
 - What is the grading policy / grade cutoffs? (syllabus)
 - What is the late policy in prose? (syllabus)
-- How much do I need on the final to get an A? (current grade + weights **+** syllabus cutoffs)
-- What time is my class? Where is it? (syllabus / calendar; wants a map link)
+- What time is my class? Where is it? (syllabus / a page)
+- When are office hours? (syllabus / pages / the class calendar page)
+- Is Lockdown Browser required? → the announcement or assignment that names it
+- What are we covering this week / what should I read? (modules + pages)
 - Is class cancelled today? (announcements)
-- When are office hours? (syllabus / Pages)
-- What's the Zoom link for class? (syllabus)
-- What are we covering this week / what should I read? (modules + Pages)
-- Is Lockdown Browser required? → recommend setup + link (scan announcements/assignment text)
-- How do I contact my TA? (People / syllabus)
+- What's the Zoom link for class? (syllabus / a page)
+- How do I contact my TA? (syllabus / a page)
+
+Still hybrid — structured data plus one retrieved fact:
+
+- How much do I need on the final to get an A? (current grade + group weights
+  from the API, grade cutoffs from the syllabus)
 
 ## Ingestion coverage and gaps
 
@@ -41,15 +48,18 @@ pages, the course home page, module names with their item titles, announcements,
 and assignment descriptions. Courses vary a lot in structure, so ingestion skips
 any disabled tab without failing.
 
-Not covered: a syllabus that is an external link (a Google Doc, a course
-website). Canvas only returns the link, not its contents. Also not covered:
-Canvas calendar events used as a schedule (structured data — a candidate for a
-structured tool rather than retrieval).
+A syllabus that is only an external link (a Google Doc, a course website) is
+detected at index time and stored as a URL; `course_content` hands that link
+back instead of guessing. The linked document itself is never fetched — the
+product navigates Canvas, it does not read outside it.
+
+Not covered: Canvas calendar events used as a schedule (structured data — a
+candidate for a structured tool rather than retrieval).
 
 ## Notes
 
 - Adding structured tools has a cost. The 3B model juggles more tools less
-  reliably — it currently sees five — so new tools are worth batching and
+  reliably — it currently sees six — so new tools are worth batching and
   re-checking against the eval rather than adding one at a time.
 - Several items in the RAG list are really hybrid: structured data plus one fact
   from the syllabus (for example, "how much do I need on the final" needs the

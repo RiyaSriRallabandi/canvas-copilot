@@ -83,15 +83,22 @@ _COURSE_PHRASE = re.compile(
 _PRONOUN_REF = re.compile(
     r"\b(it|that class|that course|the same( one)?|this class)\b", re.I
 )
-# "which of my courses…", "how many classes…" — answered from the course list.
-# Deliberately narrow: "what assignments in the X course" must NOT match.
+# "which of my courses…", "how many classes…", "what AI classes do I have" —
+# answered from the course list. A topic word may sit between the wh-word and
+# "courses/classes". Deliberately narrow: "what assignments in the X course" must
+# NOT match (there, no list verb follows "course").
 _LIST_Q = re.compile(
-    r"\b(how many (of my )?(courses|classes)"
-    r"|which (of my )?(courses|classes)"
-    r"|what (courses|classes) (am i|do i|are)"
-    r"|(list|name) (my |the )?(courses|classes))\b",
+    r"\b(how many (of |of my )?(\w+ )?(courses|classes)"
+    r"|which (of |of my )?(\w+ )?(courses|classes)"
+    r"|what (\w+ )*?(courses|classes) (am i|do i|are|have i)"
+    r"|(list|name|show) (me )?(my |the |all )?(\w+ )?(courses|classes))\b",
     re.IGNORECASE,
 )
+# "which of my courses are about AI" is the recurring topic question. Match it
+# exactly so the tool result can name the courses instead of leaving a 3B to
+# decide whether "Data Science" counts as AI.
+_AI_TOPIC = re.compile(r"\b(a\.?\s?i\.?|artificial intelligence)\b", re.IGNORECASE)
+_AI_IN_TITLE = re.compile(r"\bA\.?I\.?\b|artificial intelligence", re.IGNORECASE)
 # A vague follow-up after a block ("keep going", "help me", "the rest").
 _CONTINUATION = re.compile(
     r"\b(help|continue|keep going|go on|more|next|the rest|walk me|show me|"
@@ -151,7 +158,19 @@ def _system_message(deps: AgentDeps, today: date, date_hints: str) -> SystemMess
 
 
 def _tool_turns(messages: list[AnyMessage]) -> int:
-    return sum(1 for m in messages if isinstance(m, AIMessage) and m.tool_calls)
+    """Tool-calling turns since the student's latest message.
+
+    The cap is per question, not per conversation — otherwise a `chat` session
+    stops calling tools a few questions in and starts answering from stale
+    context.
+    """
+    count = 0
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, AIMessage) and message.tool_calls:
+            count += 1
+    return count
 
 
 def build_agent(
@@ -217,12 +236,35 @@ def build_agent(
 
             args = dict(call["args"])
 
-            # "which of my courses are about X" is answered from the course list.
-            if call["name"] in _COURSE_TOOLS and _LIST_Q.search(student_text):
+            # "which of my courses are about X", "what AI classes do I have" —
+            # answered from the course list, whatever tool the model reached for.
+            # Restate the list inline so a small model doesn't have to recall it,
+            # and give it the matching rule.
+            if _LIST_Q.search(student_text):
+                roster_courses = deps.courses()
+                roster = "\n".join(f"  - {c.nickname or c.name}" for c in roster_courses)
+                guidance = (
+                    "If they asked which are about a topic, include a course only "
+                    "when that word — or an obvious equivalent — is in its title."
+                )
+                if _AI_TOPIC.search(student_text):
+                    ai_titles = [
+                        c.nickname or c.name or ""
+                        for c in roster_courses
+                        if _AI_IN_TITLE.search(c.nickname or c.name or "")
+                    ]
+                    guidance = (
+                        "The courses whose title names AI are: "
+                        + (", ".join(ai_titles) if ai_titles else "none")
+                        + ". Name exactly those."
+                    )
                 results.append(
                     ToolMessage(
-                        content="This is a question about the course list, which "
-                        "you already have. Answer it directly without a tool.",
+                        content=(
+                            "Do not use a tool. Answer only from this list of the "
+                            f"student's courses:\n{roster}\n{guidance} "
+                            "Nothing about due dates."
+                        ),
                         tool_call_id=call["id"],
                     )
                 )

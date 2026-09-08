@@ -20,6 +20,7 @@ from canvas_copilot.content.search import Passage, search
 from canvas_copilot.resolve import Resolution, normalize
 from canvas_copilot.resolve import resolve_course as resolve_course_fn
 from canvas_copilot.storage import CourseCache, NicknameStore
+from canvas_copilot.storage.content import ContentStore
 from canvas_copilot.storage.vectors import VectorStore
 
 
@@ -70,16 +71,19 @@ class AgentDeps:
     def search_content(self, course_id: int, question: str) -> list[Passage] | None:
         """Passages from the course's indexed materials, or None if unavailable.
 
-        Indexes the course now if it hasn't been indexed yet.
+        Indexes (or re-indexes) the course now if its content is missing or was
+        built under an older chunking/retrieval scheme.
         """
         if self.conn is None or self.embedder is None:
             return None
-        if not VectorStore(self.conn).has_course(course_id):
-            if not isinstance(self.client, CanvasClient):
-                return None
-            from canvas_copilot.content.index import index_course
+        store = ContentStore(self.conn)
+        if store.needs_reindex(course_id):
+            if isinstance(self.client, CanvasClient):
+                from canvas_copilot.content.index import index_course
 
-            index_course(self.client, self.conn, self.embedder, course_id)
+                index_course(self.client, self.conn, self.embedder, course_id)
+            elif not VectorStore(self.conn).has_course(course_id):
+                return None
         return search(self.conn, self.embedder, course_id, question)
 
 
@@ -239,22 +243,59 @@ def build_tools(deps: AgentDeps) -> list[BaseTool]:
         if result.course is None:
             return format_resolution(result)
 
+        label = course_label(result.course)
         passages = deps.search_content(result.course.id, question)
         if passages is None:
             return (
-                f"{course_label(result.course)}: course materials aren't indexed. "
+                f"{label}: course materials aren't indexed yet. "
                 "Tell the student to run `canvas-copilot index`."
             )
-        if not passages:
-            return (
-                f"{course_label(result.course)}: nothing about that was found in "
-                "the syllabus, pages, or announcements."
+
+        external = (
+            ContentStore(deps.conn).external_syllabus_url(result.course.id)
+            if deps.conn is not None
+            else None
+        )
+        # A course whose syllabus is off Canvas: the link is the answer for
+        # anything the Canvas pages don't plainly cover. Lead with it so a small
+        # model doesn't mistake a stray assignment passage for a policy answer.
+        if external:
+            head = (
+                f"{label}: this course's syllabus is kept outside Canvas: {external}\n"
+                "Unless a passage below plainly answers the question, tell the "
+                "student the detail isn't in Canvas and give them that link (use "
+                "the link exactly as written above). Do not treat an assignment's "
+                "own text as a course-wide policy."
             )
-        blocks = [f"{course_label(result.course)} — from the course materials:"]
+            # Assignment / module passages here are almost always a distraction
+            # from a policy question and tempt the model to cite their URLs.
+            passages = [
+                p
+                for p in passages
+                if p.source_type in {"syllabus", "page", "announcement"}
+            ]
+            if not passages:
+                return head
+            blocks = [head, "\nCanvas passages that mention it:"]
+        else:
+            if not passages:
+                return (
+                    f"{label}: nothing in the syllabus, pages, or announcements "
+                    "covers that. Tell the student it isn't in this course's Canvas "
+                    "materials. Do not add a link — there is no relevant page."
+                )
+            blocks = [f"{label} — Canvas passages for the question:"]
+
         for p in passages:
             where = p.source_title or p.source_type
             link = f" — {p.source_url}" if p.source_url else ""
             blocks.append(f"\n[{where}{link}]\n{p.text}")
+        blocks.append(
+            "\nAnswer in 2-3 sentences using only the passages above. Quote or "
+            "closely paraphrase, include the source link, and add no facts they "
+            f"don't contain. If they don't answer it, say so — it isn't in {label}'s "
+            "Canvas materials."
+        )
         return "\n".join(blocks)
 
     @tool

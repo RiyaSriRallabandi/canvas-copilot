@@ -59,14 +59,33 @@ The model sees six tools:
 | `list_courses` | the student's courses |
 | `resolve_course(query)` | which course a name/nickname refers to |
 | `course_assignments(course_query, due_after?, due_before?)` | one course's assignments, with points, submission status, and lock date |
-| `course_content(course_query, question)` | passages from the course's syllabus / pages / announcements / assignment text that match the question, with links |
+| `course_content(course_query, question)` | passages from the course's syllabus / pages / announcements that match the question, with links |
 | `get_todo(due_after?, due_before?)` | the to-do list across all courses |
 | `get_upcoming_events` | upcoming events and due dates across all courses |
 
 `course_assignments` and `course_content` resolve the course themselves, so the
 model never handles a course id — it passes the student's words and gets the
-answer back. `course_content` runs the same vector search as the `search`
-command; if the course has not been indexed yet, it indexes it first.
+answer back. `course_content` runs the same hybrid search as the `search`
+command; if the course has not been indexed (or was indexed under an older
+scheme) it indexes it first. When a course's syllabus is a link out of Canvas
+(a Google Doc, a course site), `course_content` returns that link rather than a
+guess assembled from whatever else was indexed.
+
+### How `course_content` retrieves
+
+Two rankers over the indexed chunks, fused:
+
+- a **vector search** (nomic-embed-text, cosine) over the course's *guidance*
+  text — syllabus, pages, announcements, module outlines — for paraphrased
+  questions;
+- a **keyword search** (SQLite FTS5, BM25) over *every* chunk, so an exact term
+  ("Grade Breakdown", "LockDown Browser") ranks well and assignment text stays
+  reachable when a question names something literally.
+
+Reciprocal-rank fusion merges the two lists, leaning on the keyword ranker —
+for a policy or prose question the answer almost always contains the question's
+distinctive words, and BM25 separates those where a 768-dimension embedding
+bunches everything together.
 
 ## Libraries
 
@@ -83,10 +102,14 @@ command; if the course has not been indexed yet, it indexes it first.
 
 A SQLite database (`~/Library/Application Support/canvas-copilot/`) caches the
 course list (24-hour freshness), holds manually set course nicknames, and stores
-the chunked text of each course's syllabus, pages, announcements, and assignment
-descriptions (built by `canvas-copilot index`). It is a lookup accelerator, not
-a record of Canvas data. Schema changes are applied by a small ordered list of
-migrations tracked with `PRAGMA user_version`.
+each course's indexed content (built by `canvas-copilot index`): the chunked
+text of the syllabus, pages, announcements, module outlines, and assignment
+descriptions, a BM25 keyword index (FTS5) over those chunks, their embeddings
+(a `sqlite-vec` virtual table), and per-course index metadata — when it was
+built, a content-schema number so a stale index rebuilds itself, and the URL of
+an off-Canvas syllabus. It is a lookup accelerator, not a record of Canvas data.
+Schema changes are applied by a small ordered list of migrations tracked with
+`PRAGMA user_version`.
 
 The Canvas token is kept in the OS keychain, never in a file.
 

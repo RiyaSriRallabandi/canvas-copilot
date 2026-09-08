@@ -185,6 +185,34 @@ def test_course_content_reports_when_not_indexed(tools):
     assert "index" in out.lower()
 
 
+def test_course_content_points_to_an_external_syllabus(tools):
+    from canvas_copilot.storage.content import ContentStore
+    from canvas_copilot.storage.db import connect as _connect
+
+    tool_map, _ = tools
+    conn = _connect(":memory:")
+    # Indexed, but nothing to retrieve — the syllabus lives outside Canvas.
+    ContentStore(conn).replace_course(
+        3, [], external_syllabus_url="https://docs.google.com/document/d/abc/edit"
+    )
+    client = MagicMock()
+    client.list_courses.return_value = COURSES
+    cache = MagicMock()
+    cache.get_courses.side_effect = lambda fetch, **kw: fetch()
+    deps = AgentDeps(
+        client=client,
+        cache=cache,
+        nicknames=NicknameStore(conn),
+        conn=conn,
+        embedder=_FakeEmbedder(),
+    )
+    tool = {t.name: t for t in build_tools(deps)}["course_content"]
+
+    out = tool.invoke({"course_query": "stats", "question": "what is the grading policy"})
+    assert "docs.google.com/document/d/abc/edit" in out
+    assert "outside Canvas" in out
+
+
 def test_course_assignments_passes_iso_window(tools):
     tool_map, client = tools
     client.list_assignments.return_value = []

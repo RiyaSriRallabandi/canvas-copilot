@@ -159,6 +159,27 @@ def test_ingest_course_pulls_every_source():
     assert store.indexed_at(7) is not None
 
 
+def test_ingest_course_records_an_external_syllabus_and_skips_its_chunk():
+    client = MagicMock()
+    client.web_base_url = "https://canvas.cmu.edu"
+    client.get_syllabus.return_value = (
+        "Read the syllabus "
+        '<a href="https://docs.google.com/document/d/xyz/edit">here</a>.'
+    )
+    client.list_files.return_value = []
+    client.list_pages.return_value = []
+    client.get_front_page.return_value = None
+    client.list_modules.return_value = []
+    client.list_announcements.return_value = []
+    client.list_assignments.return_value = []
+
+    store = ContentStore(connect(":memory:"))
+    result = ingest_course(client, 7, store)
+
+    assert "syllabus" not in result.counts
+    assert store.external_syllabus_url(7) == "https://docs.google.com/document/d/xyz/edit"
+
+
 def test_ingest_course_replaces_previous_chunks():
     client = MagicMock()
     client.get_syllabus.return_value = "<p>first version</p>"

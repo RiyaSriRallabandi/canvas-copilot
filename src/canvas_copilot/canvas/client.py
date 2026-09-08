@@ -81,6 +81,11 @@ class CanvasClient:
     def close(self) -> None:
         self._client.close()
 
+    @property
+    def web_base_url(self) -> str:
+        """The Canvas web origin (the API base with ``/api/vN`` stripped)."""
+        return re.sub(r"/api/v\d+/?$", "", str(self._client.base_url))
+
     # -- low level --------------------------------------------------------
 
     def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
@@ -230,7 +235,7 @@ class CanvasClient:
 
     def list_modules(self, course_id: int) -> list[Module]:
         raw = self._get_paginated(f"/courses/{course_id}/modules", {"include[]": "items"})
-        web = re.sub(r"/api/v\d+/?$", "", str(self._client.base_url))
+        web = self.web_base_url
         modules = []
         for item in raw:
             module = Module.model_validate(item)

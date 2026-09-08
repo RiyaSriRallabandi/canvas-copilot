@@ -433,6 +433,24 @@ def chat(
 
 
 @app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Address to bind."),
+    port: int = typer.Option(8765, help="Port to listen on."),
+) -> None:
+    """Run the local web chat UI and open it in the browser."""
+    import webbrowser
+
+    import uvicorn
+
+    from canvas_copilot.web.app import build_app
+
+    url = f"http://{host}:{port}"
+    typer.echo(f"Canvas Copilot is at {url}  (Ctrl+C to stop)")
+    webbrowser.open(url)
+    uvicorn.run(build_app(), host=host, port=port, log_level="warning")
+
+
+@app.command()
 def version() -> None:
     """Print the installed version."""
     typer.echo(__version__)

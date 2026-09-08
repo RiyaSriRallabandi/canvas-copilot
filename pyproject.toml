@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+    "fastapi>=0.121.0",
     "html2text>=2025.4.15",
     "httpx>=0.28.1",
     "keyring>=25.7.0",
@@ -25,6 +26,7 @@ dependencies = [
     "rapidfuzz>=3.14.6",
     "sqlite-vec>=0.1.9",
     "typer>=0.27.2",
+    "uvicorn>=0.38.0",
 ]
 
 [project.scripts]

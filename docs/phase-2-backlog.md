@@ -56,6 +56,17 @@ product navigates Canvas, it does not read outside it.
 Not covered: Canvas calendar events used as a schedule (structured data — a
 candidate for a structured tool rather than retrieval).
 
+### The class-schedule gap
+
+"When does my AI Strategy class meet" currently routes to content search, which
+looks at the syllabus and pages only. When the meeting time is not written
+there, the answer is "not found" — even though the recurring class sessions are
+in Canvas as calendar events. `get_upcoming_events` reads those events but is
+all-courses and next-week-only, and is never reached for a meeting-time
+question. The fix is a course-scoped schedule tool (or letting meeting-time
+questions fall through to the calendar) so "when does X meet" and "any exams in
+X" draw on the same source.
+
 ## Notes
 
 - Adding structured tools has a cost. The 3B model juggles more tools less

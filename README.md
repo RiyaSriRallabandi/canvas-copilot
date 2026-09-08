@@ -51,9 +51,11 @@ uv run canvas-copilot whoami  # confirms the token works
 ## Use
 
 ```bash
+uv run canvas-copilot serve           # web chat UI in the browser
 uv run canvas-copilot ask "what assignments do I have due this week?"
-uv run canvas-copilot chat            # interactive session that remembers context
+uv run canvas-copilot chat            # interactive terminal session, remembers context
 uv run canvas-copilot courses         # your starred courses
+uv run canvas-copilot index --all     # read course content for the questions below
 uv run canvas-copilot nickname add "ml" 12345
 ```
 
@@ -71,10 +73,18 @@ CI runs on every push and pull request (`.github/workflows/ci.yml`).
 
 ## Scope
 
-This version answers logistics questions from Canvas's structured API. Questions
-that live in the syllabus, course pages, or announcements — grading policies,
-class location, "how much do I need on the final" — need a retrieval layer that
-is planned for the next phase (`docs/phase-2-backlog.md`).
+Two kinds of question are answered:
+
+- **Structured** — assignments, due dates, points, submission status, the to-do
+  list, upcoming events — straight from Canvas's REST API.
+- **Prose** — the grading breakdown, late policy, class time and room, office
+  hours, exam format, whether LockDown Browser is required — by indexing each
+  course's syllabus, pages, and announcements (`canvas-copilot index`) and
+  searching them with a keyword + embedding hybrid. A syllabus that lives in an
+  off-Canvas document (a Google Doc) is answered with the link, not a guess.
+
+`docs/decisions.md` records the design choices and why; `docs/phase-2-backlog.md`
+lists what is not covered yet.
 
 ## License
 

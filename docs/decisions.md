@@ -114,7 +114,16 @@ in the OS keychain, never in a file.
 
 ### A local web GUI before any packaged app
 
-A `serve` command (FastAPI + one static page, opened in the browser) gives a
-usable chat interface on top of the existing agent without the weeks of work a
-distributable desktop app needs (bundling Ollama, installers, a first-run
-wizard). That packaging is a separate, later effort.
+`canvas-copilot serve` runs a FastAPI app that serves one static page and wraps
+the existing agent. It gives a usable chat interface — token entry, a
+"Gather information" indexing step with a progress bar, the chat, and course
+clarification as buttons — without the weeks of work a distributable desktop app
+needs (bundling Ollama, installers, a first-run wizard). That packaging is a
+separate, later effort.
+
+One server process serves one user (the person on the machine). A single lock
+guards agent turns because FastAPI runs sync handlers on a threadpool and the
+SQLite connection and graph state are shared; the connection is opened with
+`check_same_thread=False` for that reason. Conversation memory is an in-memory
+checkpointer keyed by a per-browser-tab thread id — it lasts as long as the
+server runs.

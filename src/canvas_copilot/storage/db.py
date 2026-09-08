@@ -84,10 +84,17 @@ def default_db_path() -> Path:
     return directory / "cache.db"
 
 
-def connect(path: Path | str | None = None) -> sqlite3.Connection:
-    """Open a connection with sensible defaults and an initialized schema."""
+def connect(
+    path: Path | str | None = None, *, check_same_thread: bool = True
+) -> sqlite3.Connection:
+    """Open a connection with sensible defaults and an initialized schema.
+
+    ``check_same_thread=False`` is for the web server, where FastAPI runs sync
+    handlers on a threadpool; callers that pass it must serialize their own
+    writes (the server holds one lock around agent turns).
+    """
     target = ":memory:" if path == ":memory:" else str(path or default_db_path())
-    conn = sqlite3.connect(target)
+    conn = sqlite3.connect(target, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     init_db(conn)
